@@ -8,7 +8,7 @@ git clone https://github.com/kpdaie/BCI_analysis.git
 ```
 - enter to the root directory of this repo 
 ```
-cd BC_analysis
+cd BCI_analysis
 ```
 - and pip install the package:
 ```
