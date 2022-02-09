@@ -1,6 +1,22 @@
 # BCI_analysis
 
-File Structure 
+### Install
+To use as a package: 
+- clone from github 
+```
+git clone https://github.com/kpdaie/BCI_analysis.git
+```
+- enter to the root directory of this repo 
+```
+cd BC_analysis
+```
+- and pip install the package:
+```
+pip install -e .
+```
+
+
+### File Structure 
 ```
 |- BCI_analysis
     |- io
