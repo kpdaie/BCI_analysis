@@ -18,6 +18,8 @@ def read_multisession_mat(full_file_path):
             Path to loaded file
         file_name - str
             Name of loaded file
+        session_file_names - list of str [sessions]
+            Names of source session files
         n_days - int
             Number of sessions in this dataset
         cni - int, [sessions]
@@ -44,11 +46,26 @@ def read_multisession_mat(full_file_path):
             which key correspond to actual training trials from epoch
         epoch_closedloop bool [sessions]
             ???
+        roi list of dicts [sessions]
+            centroid - float [number of ROIs x 2]
+                centroid of ROI in pixels
+            centerXY - float [number of ROIs x 2]
+                centroid of ROI in microns from the center of the FOV
+            plane - int [number of ROIs x 1]
+                the plane number in which the ROI resides
+            pixelList int [number of ROIs x number of pixels in ROI] 
+                list of pixels that belong to the ROI
+            scalingXY float [number of ROIs x 2]
+                ???
+            intensity [number of ROIs x ???] 
+                ???
+            
     """
     file_path,file_name = os.path.split(full_file_path)
     data=io.loadmat(full_file_path)
     
     n_days = data['data'].shape[1]    
+    session_file_names = [data['data'][:, i]['file'][0][0] for i in range(n_days)] # -1 to account for matlab indexing
     cni = [data['data'][:, i]['cn'][0][0][0] - 1 for i in range(n_days)] # -1 to account for matlab indexing
     dFF = [data['data'][:, i]['df'][0] for i in range(n_days)]
     dist = [data['data'][:, i]['dist'][0].flatten() for i in range(n_days)]
@@ -59,14 +76,29 @@ def read_multisession_mat(full_file_path):
     total_steps = [dFF[i].shape[0] for i in range(n_days)]
     n_trials = [F_trialwise[i].shape[-1] for i in range(n_days)]
     epoch = [data['data'][:, i]['epoch'][0].flatten() for i in range(n_days)]
-    lkeys = [[1,3], 1, 4, 2]  #Since i did not know the exact epoch numbers for the BCI_13Sep session, 
-    # I hardcoded them here. This should change in the future
-
+    lkeys = [[1,3], 1, 4, 2]  # TODO this is not defined in the .mat file
     epoch_closedloop = [np.isin(epoch[i],lkeys[i])[0] for i in range(n_days)]
-    
-    
+
+    roi = []
+    for i in range(n_days):
+        roi_dict = {}
+        n_cells = data['data'][:, i]['roi'][0].shape[1]
+        roi_keys = data['data'][:, i]['roi'][0].dtype.fields.keys()
+        for key in roi_keys:
+            key_list = []
+            for cell_i in range(n_cells):
+                temp_list = data['data'][:, i]['roi'][0][:,cell_i][key]
+                while len(temp_list)>0 and hasattr(temp_list[0], '__iter__'):
+                    temp_list = np.concatenate(temp_list)
+                if key in ['centroid','pixelList']:
+                    temp_list -= 1
+                key_list.append(temp_list.tolist())
+            roi_dict[key]= key_list
+        roi.append(roi_dict)
+        
     data_dict = {'file_path':file_path,
                  'file_name':file_name,
+                 'session_file_names':session_file_names,
                  'n_days':n_days,
                  'cni':cni,
                  'dFF':dFF,
@@ -79,7 +111,8 @@ def read_multisession_mat(full_file_path):
                  'n_trials':n_trials,
                  'epoch':epoch,
                  'lkeys':lkeys,
-                 'epoch_closedloop':epoch_closedloop
+                 'epoch_closedloop':epoch_closedloop,
+                 'roi':roi
                  }
     
     return data_dict
