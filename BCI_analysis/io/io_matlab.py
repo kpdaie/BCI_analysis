@@ -1,6 +1,8 @@
 import scipy.io as io
 import numpy as np
 import os
+import mat73
+from datetime import datetime
 
 def read_multisession_mat(full_file_path):
     """
@@ -18,34 +20,38 @@ def read_multisession_mat(full_file_path):
             Path to loaded file
         file_name - str
             Name of loaded file
-        session_file_names - list of str [sessions]
+        subject - str
+            Mouse water restriction ID.
+        session_dates - list of datetime.date, [sessions]
+            Dates of sessions.
+        session_file_names - list of str, [sessions]
             Names of source session files
+        scanimage_file_names - list of str [session x file count]
+            Names of original scanimage files.
+        closed_loop_scanimage_file_names - list of str [session x file count]
+            Names of original scnimage files during closed loop.
         n_days - int
             Number of sessions in this dataset
-        cni - int, [sessions]
+        conditioned_neuron_idx - list of int, [sessions]
             Conditioned Neuron indices
-        dFF - float [sessions x time points x neurons]
-            DeltaF/F      
-        dist -float [sessions x neurons x 1]
+        dff_sessionwise_all_epochs - float [sessions x time points x neurons]
+            DeltaF/F of all trials 
+        dff_sessionwise_closed_loop - float [sessions x time points x neurons]
+            DeltaF/F of closed loop trials 
+        dff_trialwise_closed_loop - float [sessions x time points x neurons x trials]
+            DeltaF/F of closed loop trials reshaped by trials
+        distance_from_conditioned_neuron -float [sessions x neurons]
             Distance from Conditioned Neuron in pixels   
-        meanImg - float [sessions x Y_size x X_size]
+        mean_image - float [sessions x Y_size x X_size]
             Mean Image of the field of view
-        raw - float [sessions x time points x neurons]
-            Flourescence Intensity
-        F_trialwise - float [sessions x time points x neurons x trials]
-            DeltaF/F reshaped     
-        tsta - float [sessions x time points]
-            Time steps corresponding to F_trialwise
-        total_steps - int [sessions]
-            Total time steps
-        n_trials - int [sessions]
-            Number of trials
-        epoch - int, [sessions x trials]
-            3 keys corresponding to spontaneuous Pre Training, closed loop, spontaneous Post Training 
-        lkeys - int [sessions]
-            which key correspond to actual training trials from epoch
-        epoch_closedloop bool [sessions]
-            ???
+        f_sessionwise_closed_loop - float [sessions x time points x neurons]
+            Raw flourescence intensity of closed loop trials
+        f_trialwise_closed_loop - float [sessions x time points x neurons x trials]
+            Raw flourescence intensity of closed loop trials reshaped by trials    
+        time_from_trial_start - float [sessions x time points]
+            Time steps corresponding to trialwise fluorescence traces
+            
+        # TO BE ADDED#:
         roi list of dicts [sessions]
             centroid - float [number of ROIs x 2]
                 centroid of ROI in pixels
@@ -61,58 +67,30 @@ def read_multisession_mat(full_file_path):
                 ???
             
     """
-    file_path,file_name = os.path.split(full_file_path)
-    data=io.loadmat(full_file_path)
+    #%%
     
-    n_days = data['data'].shape[1]    
-    session_file_names = [data['data'][:, i]['file'][0][0] for i in range(n_days)] # -1 to account for matlab indexing
-    cni = [data['data'][:, i]['cn'][0][0][0] - 1 for i in range(n_days)] # -1 to account for matlab indexing
-    dFF = [data['data'][:, i]['df'][0] for i in range(n_days)]
-    dist = [data['data'][:, i]['dist'][0].flatten() for i in range(n_days)]
-    meanImg = [data['data'][:, i]['IM'][0] for i in range(n_days)]
-    raw = [data['data'][:, i]['raw'][0] for i in range(n_days)]
-    F_trialwise = [data['data'][:, i]['F'][0] for i in range(n_days)]
-    tsta = [data['data'][:, i]['tsta'][0].flatten() for i in range(n_days)]
-    total_steps = [dFF[i].shape[0] for i in range(n_days)]
-    n_trials = [F_trialwise[i].shape[-1] for i in range(n_days)]
-    epoch = [data['data'][:, i]['epoch'][0].flatten() for i in range(n_days)]
-    lkeys = [[1,3], 1, 4, 2]  # TODO this is not defined in the .mat file
-    epoch_closedloop = [np.isin(epoch[i],lkeys[i])[0] for i in range(n_days)]
-
-    roi = []
-    for i in range(n_days):
-        roi_dict = {}
-        n_cells = data['data'][:, i]['roi'][0].shape[1]
-        roi_keys = data['data'][:, i]['roi'][0].dtype.fields.keys()
-        for key in roi_keys:
-            key_list = []
-            for cell_i in range(n_cells):
-                temp_list = data['data'][:, i]['roi'][0][:,cell_i][key]
-                while len(temp_list)>0 and hasattr(temp_list[0], '__iter__'):
-                    temp_list = np.concatenate(temp_list)
-                if key in ['centroid','pixelList']:
-                    temp_list -= 1
-                key_list.append(temp_list.tolist())
-            roi_dict[key]= key_list
-        roi.append(roi_dict)
+    file_path,file_name = os.path.split(full_file_path)
+    data = mat73.loadmat(full_file_path)['data']
+    
         
     data_dict = {'file_path':file_path,
                  'file_name':file_name,
-                 'session_file_names':session_file_names,
-                 'n_days':n_days,
-                 'cni':cni,
-                 'dFF':dFF,
-                 'dist':dist,
-                 'meanImg':meanImg,
-                 'raw':raw,
-                 'F_trialwise':F_trialwise,
-                 'tsta':tsta,
-                 'total_steps':total_steps,
-                 'n_trials':n_trials,
-                 'epoch':epoch,
-                 'lkeys':lkeys,
-                 'epoch_closedloop':epoch_closedloop,
-                 'roi':roi
+                 'subject':data['mouse'][0],
+                 'session_dates':[datetime.strptime(str(int(i)).zfill(6),'%M%d%Y').date() for i in data['sessionDate']],
+                 'session_file_names':data['file'],
+                 'scanimage_file_names':data['all_si_filenames'],
+                 'closed_loop_scanimage_file_names':data['closed_loop_filenames'],
+                 'n_days':len(data['mouse']),
+                 'conditioned_neuron_idx':(np.asarray(data['cn'],int).flatten()-1).tolist(), # matlab to python indexing
+                 'dff_sessionwise_all_epochs':data['dff_sessionwise_all_epochs'],
+                 'dff_sessionwise_closed_loop':data['dff_sessionwise_closed_loop'],
+                 #'dff_trialwise_closed_loop':data['dff_trialwise_closed_loop'], # this one is missing from many files, commented out for now
+                 'distance_from_conditioned_neuron':data['dist'],
+                 'mean_image':data['mean_image'],
+                 'f_sessionwise_closed_loop':data['f_sessionwise_closed_loop'],
+                 'f_trialwise_closed_loop':data['f_trialwise'],
+                 'time_from_trial_start':data['time_from_trial_start'],
+                 #'roi':roi
                  }
-    
+    #%%
     return data_dict
