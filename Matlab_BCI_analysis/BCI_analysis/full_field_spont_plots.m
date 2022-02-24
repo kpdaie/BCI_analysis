@@ -1,0 +1,1 @@
+folder = 'E:\BCI19\';
