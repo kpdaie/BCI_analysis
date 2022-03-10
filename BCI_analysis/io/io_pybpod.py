@@ -1,17 +1,10 @@
-#%%
+
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import time
 import os
-import pickle
-import shutil
 import json
-#%%
-paths = ['/home/rozmar/Data/Behavior/Behavior_rigs/KayvonScope',
-         r'C:\Users\bpod\Documents\Pybpod',
-         r'C:\Users\labadmin\Documents\Pybpod']
 
 def load_dir_stucture(projectdir,projectnames_needed = None, experimentnames_needed = None,  setupnames_needed=None):
     """
@@ -232,10 +225,7 @@ def pybpod_dataframe_to_dict(data):
                 behavior_movie_names = past_trial_line['MSG'][23:].strip('[]').split(',')
             if 'scanimage file' in past_trial_line['MSG']:
                 scanimage_message = past_trial_line['MSG'][16:]
-            
-            
-        #%
-        #TODO df_past_trial contains the scanimage file name and the camera file names
+                
         trial_start_time = data['PC-TIME'][trial_start_idx]
         trial_end_time = data['PC-TIME'][trial_end_idx]
         go_cue_time = df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values#[0]#.index.to_numpy()[0]
