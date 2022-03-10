@@ -50,21 +50,10 @@ def read_multisession_mat(full_file_path):
             Raw flourescence intensity of closed loop trials reshaped by trials    
         time_from_trial_start - float [sessions x time points]
             Time steps corresponding to trialwise fluorescence traces
-            
-        # TO BE ADDED#:
-        roi list of dicts [sessions]
-            centroid - float [number of ROIs x 2]
-                centroid of ROI in pixels
-            centerXY - float [number of ROIs x 2]
-                centroid of ROI in microns from the center of the FOV
-            plane - int [number of ROIs x 1]
-                the plane number in which the ROI resides
-            pixelList int [number of ROIs x number of pixels in ROI] 
-                list of pixels that belong to the ROI
-            scalingXY float [number of ROIs x 2]
-                ???
-            intensity [number of ROIs x ???] 
-                ???
+        roi_center_x - float [sessions x Neurons]
+            Center of ROI in X axis in pixels
+        roi_center_y - float [sessions x Neurons]
+            Center of ROI in Y axis in pixels
             
     """
     #%%
@@ -84,13 +73,14 @@ def read_multisession_mat(full_file_path):
                  'conditioned_neuron_idx':(np.asarray(data['cn'],int).flatten()-1).tolist(), # matlab to python indexing
                  'dff_sessionwise_all_epochs':data['dff_sessionwise_all_epochs'],
                  'dff_sessionwise_closed_loop':data['dff_sessionwise_closed_loop'],
-                 #'dff_trialwise_closed_loop':data['dff_trialwise_closed_loop'], # this one is missing from many files, commented out for now
+                 'dff_trialwise_closed_loop':data['dff_trialwise_closed_loop'], # this one is missing from many files, commented out for now
                  'distance_from_conditioned_neuron':data['dist'],
                  'mean_image':data['mean_image'],
                  'f_sessionwise_closed_loop':data['f_sessionwise_closed_loop'],
                  'f_trialwise_closed_loop':data['f_trialwise'],
                  'time_from_trial_start':data['time_from_trial_start'],
-                 #'roi':roi
+                 'roi_center_x':data['roiX'],
+                 'roi_center_y':data['roiY']
                  }
     #%%
     return data_dict
