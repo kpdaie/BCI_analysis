@@ -68,10 +68,7 @@ def export_pybpod_files_core(bpod_session_dict,
                                                                       subject_name,
                                                                       setup_name,
                                                                       zaber_root_folder)
-        zaber_step_times = list()
-        for v,a,s in zip(zaber_dict['speed'],zaber_dict['acceleration'],zaber_dict['trigger_step_size']):
-            zaber_step_times.append(calculate_step_time(s/1000,v,a))
-        zaber_dict['trigger_step_time'] =np.asarray(zaber_step_times)
+        
         for key in zaber_dict.keys():
             behavior_dict['zaber_{}'.format(key)] = zaber_dict[key]
         trialnum = len(behavior_dict['trial_num'])

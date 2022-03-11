@@ -1,10 +1,37 @@
-
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
 import json
+
+def calculate_step_time(s,v,a):
+    """
+    This script calculates zaber step times from acceleration, max speed and distance to travel.
+
+    Parameters
+    ----------
+    s : float
+        step size in mm
+    v : float
+        max speed in mm/s.
+    a : float
+        accelerateio in mm/s**2.
+
+    Returns
+    -------
+    t : float
+        time needed to complete a step in seconds
+
+    """
+    t1 = v/a
+    s1 = t1*v
+    if s1>=s:
+        t = 2*np.sqrt((s/a)/2)
+    else:
+        t = 2*v/a+(s-(t1*v))/v
+    return t
+
 
 def load_dir_stucture(projectdir,projectnames_needed = None, experimentnames_needed = None,  setupnames_needed=None):
     """
@@ -345,4 +372,11 @@ def add_zaber_info_to_pybpod_dict(behavior_dict,
     for zaber_key in zaber_vars_dict.keys():
         zaber_vars_dict[zaber_key] = np.asarray(zaber_vars_dict[zaber_key])
         
+    zaber_step_times = list()
+    for v,a,s in zip(zaber_vars_dict['speed'],zaber_vars_dict['acceleration'],zaber_vars_dict['trigger_step_size']):
+        zaber_step_times.append(calculate_step_time(s/1000,v,a))
+    zaber_vars_dict['trigger_step_time'] =np.asarray(zaber_step_times)
     return zaber_vars_dict  
+
+
+
