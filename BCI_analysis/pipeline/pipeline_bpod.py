@@ -84,7 +84,7 @@ def export_pybpod_files_core(bpod_session_dict,
     for sessionfile in bpod_session_dict['sessions']:
         csvfile = sessionfile.filepath
         csv_data = io.io_pybpod.pybpod_csv_to_dataframe(csvfile)
-        behavior_dict = io.io_pybpod.pybpod_dataframe_to_dict(csv_data,extract_variables = True)
+        behavior_dict = io.io_pybpod.pybpod_dataframe_to_dict(csv_data)
         subject_name = csv_data['subject'][0]
         setup_name = csv_data['setup'][0]
         experimenter_name = csv_data['experimenter'][0]
@@ -180,7 +180,7 @@ def export_pybpod_files_core(bpod_session_dict,
             #trignextstopenable = 'true' in metadata['metadata']['hScan2D']['trigNextStopEnable'].lower()
             if metadata['metadata']['extTrigEnable'] == '0':
                 trigger_arrived_timestamps_all.append(np.nan)
-                print('not triggered')
+                print('{} is not triggered'.format(filename))
             else:
                 trigger_arrived_timestamps_all.append(trigger_arrived_timestamp)
             try:
@@ -267,6 +267,7 @@ def export_pybpod_files_core(bpod_session_dict,
                 moviename = 'no movie for this trial'
                 movie_trial_time_offset = np.nan
                 trigger_to_frame_offset  = np.nan
+                scanimage_metadata = np.nan
                 roidata=np.nan
             bpod_trial_file_names.append(moviename)
             scanimage_metadata_list.append(scanimage_metadata)
@@ -357,7 +358,7 @@ def export_single_pybpod_session(raw_behavior_dirs,
         projects[-1].load(projectdir)
     
     bpod_session_dict = find_pybpod_sessions(subject_names,session_date.strftime('%Y%m%d'),projects)
-    behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir) 
+    behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
     bpod_export_file = '{}-bpod_zaber.npy'.format(session)
     np.save(os.path.join(save_dir,bpod_export_file),behavior_dict)
     bpod_export_file = '{}-bpod_zaber.mat'.format(session)
@@ -372,6 +373,7 @@ def export_single_pybpod_session(raw_behavior_dirs,
 def export_pybpod_files(behavior_export_basedir,
                         calcium_imaging_raw_basedir,
                         raw_behavior_dirs,
+                        zaber_root_folder,
                         overwrite = False):
     """
     Main function that exports pybpod csv files, pairs them with scanimage
@@ -386,6 +388,8 @@ def export_pybpod_files(behavior_export_basedir,
         path to directory where imagig data is found
     raw_behavior_dirs : list of str
         paths to directoies where pybpod projects are found
+    zaber_root_folder : str
+        path to directory where zaber data is found
     overwrite : Boolean, optional
         If set to False (default), existing files are skipped
 
@@ -432,7 +436,7 @@ def export_pybpod_files(behavior_export_basedir,
                     
                     print('exporting behavior from {}/{}'.format(subject,session))
                     try:
-                        behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir) 
+                        behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
                     except:
                         print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
                     
@@ -445,11 +449,12 @@ def export_pybpod_files(behavior_export_basedir,
                     bpod_export_file = '{}-bpod_zaber.npy'.format(session)
                     np.save(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict)
                     bpod_export_file = '{}-bpod_zaber.mat'.format(session)
-                    behavior_dict_matlab = behavior_dict.copy()
-                    behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
-                    behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
-                    #%
-                    savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
+# =============================================================================
+#                     behavior_dict_matlab = behavior_dict.copy()
+#                     behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
+#                     behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
+#                     savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
+# =============================================================================
                     print('{}/{} saved'.format(subject,session))
 
 # =============================================================================
