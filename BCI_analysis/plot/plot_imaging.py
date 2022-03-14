@@ -132,8 +132,8 @@ def delta_activity_plot(dataDict, dayOfInterest, baseline_correction_range = 1.5
     if np.array(dataDict['f_trialwise_closed_loop'][day]).shape[0] == np.array(dataDict['f_trialwise_closed_loop'][dayBefore]).shape[0]: #need to make sure we are comparing the same number neurons between days
         
         #Setting up the average response of each neuron across the entire session
-        average_neuron_response_curves = np.nanmean(np.array(dataDict['f_trialwise_closed_loop'][day]),axis=2) #averaging the flourescent response of each neuron across all trials
-        previous_average_neuron_response_curves = np.nanmean(np.array(dataDict['f_trialwise_closed_loop'][dayBefore]),axis=2) #averaging neuron flourescent curves from previous day
+        average_neuron_response_curves = np.nanmean(np.array(dataDict['dff_trialwise_closed_loop'][day]),axis=2) #averaging the flourescent response of each neuron across all trials
+        previous_average_neuron_response_curves = np.nanmean(np.array(dataDict['dff_trialwise_closed_loop'][dayBefore]),axis=2) #averaging neuron flourescent curves from previous day
         
         #average the initial "baseline_correction_range" times of flourescent responses 
         average_baseline_today = np.nanmean(np.nanmean(average_neuron_response_curves[baseline_range_min_index:baseline_range_max_index], axis =1))
