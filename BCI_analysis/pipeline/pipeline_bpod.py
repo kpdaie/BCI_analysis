@@ -9,23 +9,30 @@ import numpy as np
 
 import datetime
 
-def calculate_step_time(s,v,a):
-    #s : step size in mm
-    #v : max speed in mm/s
-    #a : accelerateio in mm/s**2
-    t1 = v/a
-    s1 = t1*v
-    if s1>=s:
-        t = 2*np.sqrt((s/a)/2)
-    else:
-        t = 2*v/a+(s-(t1*v))/v
-    return t
+
 
 def find_pybpod_sessions(subject_names_list,
                          date_now,
                          projects):
+    """
+    This scrip uses the pybpodgui-api package to sweep through projects and 
+    find sessions for a given subject on a given date.
     
-    
+    Parameters
+    ----------
+    subject_names_list : str or list if str
+        subject names of interest
+    date_now : str
+        date of the session, pybpod style: %Y%m%d
+    projects : list of pybpodgui_api.models.project.Project
+        pybpod projects that we need to go through.
+
+    Returns
+    -------
+    outdict : dictionary
+        dictionary that contains the sessions of interest, session start times,
+        and experiment names.
+    """
     if type(subject_names_list) != list:
         subject_names_list = [subject_names_list]
     sessions_now = list()
@@ -47,14 +54,31 @@ def find_pybpod_sessions(subject_names_list,
     outdict = {'sessions':np.asarray(sessions_now)[order],
                'session_start_times':np.asarray(session_start_times_now)[order],
                'experiment_names':np.asarray(experimentnames_now)[order]}
-    #%
     return outdict
 
 
 def export_pybpod_files_core(bpod_session_dict,
                              calcium_imaging_raw_session_dir,
-                             zaber_root_folder):
+                             zaber_root_folder): # 
+    """
+    Core function that aligns bpod, zaber and imaging modalities.
 
+    Parameters
+    ----------
+    bpod_session_dict : dict
+        list of sessions to be used, output of find_pybpod_sessions()
+    calcium_imaging_raw_session_dir : str
+        path to the tiff files 
+    zaber_root_folder : str
+        path to root zaber data
+
+    Returns
+    -------
+    behavior_dict : dict
+        trial-based behavior dictinary with aligned zaber settings and 
+        scanimage tiff files
+
+    """
     behavior_dict_list = list()
     sessionfile_start_times = list()
     for sessionfile in bpod_session_dict['sessions']:
@@ -107,6 +131,7 @@ def export_pybpod_files_core(bpod_session_dict,
     acqtrigger_timestamps_all = list()
     trigger_arrived_timestamps_all = list()
     scanimage_integration_roi_data_all = list()
+    scanimage_metadata_dict_list = list()
     for basename in uniquebasenames:
         #%
         file_idxs_now = (files['exts']=='.tif') & (files['basenames']==basename)
@@ -114,14 +139,15 @@ def export_pybpod_files_core(bpod_session_dict,
         fileindices = files['fileindices'][file_idxs_now]
         order = np.argsort(fileindices)
         filenames = filenames[order]
+        
         for filename in filenames:
             try:
-                metadata = utils_imaging.extract_scanimage_metadata(os.path.join(calcium_imaging_raw_session_dir,filename))
+                metadata = io.io_scanimage.extract_scanimage_metadata(os.path.join(calcium_imaging_raw_session_dir,filename))
                 
             except:
                 print('tiff file read error: {}'.format(os.path.join(calcium_imaging_raw_session_dir,filename)))
                 continue
-           
+            
             movie_start_time = metadata['movie_start_time']
             
             if float(metadata['description_first_frame']['frameTimestamps_sec'])<0:
@@ -149,8 +175,9 @@ def export_pybpod_files_core(bpod_session_dict,
             frame_timestamps_all.append(frame_timestamp)
             nextfile_timestamps_all.append(nextfile_timestamp)
             acqtrigger_timestamps_all.append(acqtrigger_timestamp)
+            scanimage_metadata_dict_list.append(metadata)
             
-            trignextstopenable = 'true' in metadata['metadata']['hScan2D']['trigNextStopEnable'].lower()
+            #trignextstopenable = 'true' in metadata['metadata']['hScan2D']['trigNextStopEnable'].lower()
             if metadata['metadata']['extTrigEnable'] == '0':
                 trigger_arrived_timestamps_all.append(np.nan)
                 print('not triggered')
@@ -179,6 +206,8 @@ def export_pybpod_files_core(bpod_session_dict,
     acqtrigger_timestamps_all= np.asarray(acqtrigger_timestamps_all)
     trigger_arrived_timestamps_all = np.asarray(trigger_arrived_timestamps_all)
     scanimage_integration_roi_data_all = np.asarray(scanimage_integration_roi_data_all)
+    scanimage_metadata_dict_list= np.asarray(scanimage_metadata_dict_list)
+    
     
     file_order = np.argsort(frame_timestamps_all)
     
@@ -188,6 +217,7 @@ def export_pybpod_files_core(bpod_session_dict,
     acqtrigger_timestamps_all = acqtrigger_timestamps_all[file_order]
     trigger_arrived_timestamps_all = trigger_arrived_timestamps_all[file_order]
     scanimage_integration_roi_data_all = scanimage_integration_roi_data_all[file_order]
+    scanimage_metadata_dict_list = scanimage_metadata_dict_list[file_order]
     
     istriggered = list()
     for stamp in trigger_arrived_timestamps_all: istriggered.append(type(stamp)==datetime.datetime)
@@ -205,6 +235,7 @@ def export_pybpod_files_core(bpod_session_dict,
     #%
     residual_filenames = filenames_all
     residual_timestamps = trigger_arrived_timestamps_all
+    residual_metadata = scanimage_metadata_dict_list
     if len(dist_list)>0:
         center_sec = mode(np.asarray(dist_list,int))
         dist_list = dist_list[(dist_list>center_sec-1) &  (dist_list<center_sec+1)]
@@ -214,6 +245,7 @@ def export_pybpod_files_core(bpod_session_dict,
         bpod_trial_file_names = list()
         bpod_scanimage_time_offset = list()
         scanimage_frame_time_offset = list()
+        scanimage_metadata_list = list()
         for roikey in integration_roi_data.keys():
             behavior_dict['scanimage_roi_{}'.format(roikey)] = list()
             
@@ -224,8 +256,10 @@ def export_pybpod_files_core(bpod_session_dict,
             if any(movie_idxes):
                 if sum(movie_idxes) == 1:
                     moviename = np.asarray(filenames_all[istriggered][movie_idxes])
+                    scanimage_metadata = np.asarray(scanimage_metadata_dict_list[istriggered][movie_idxes])
                 else:
                     moviename = np.asarray(filenames_all[istriggered][movie_idxes])
+                    scanimage_metadata = np.asarray(scanimage_metadata_dict_list[istriggered][movie_idxes])
                 movie_trial_time_offset = (trigger_arrived_timestamps_all[istriggered][movie_idxes][0]-(trial_start_time- datetime.timedelta(seconds = time_offset-.5))).total_seconds()
                 trigger_to_frame_offset = (frame_timestamps_all[istriggered][movie_idxes][0]-trigger_arrived_timestamps_all[istriggered][movie_idxes][0]).total_seconds()
                 roidata = scanimage_integration_roi_data_all[istriggered][movie_idxes][0]
@@ -235,12 +269,14 @@ def export_pybpod_files_core(bpod_session_dict,
                 trigger_to_frame_offset  = np.nan
                 roidata=np.nan
             bpod_trial_file_names.append(moviename)
+            scanimage_metadata_list.append(scanimage_metadata)
             bpod_scanimage_time_offset.append(movie_trial_time_offset)
             scanimage_frame_time_offset.append(trigger_to_frame_offset)
             for moviename_now in moviename:
                 idx = residual_filenames !=moviename_now
                 residual_filenames = residual_filenames[idx]
                 residual_timestamps = residual_timestamps[idx]
+                residual_metadata = residual_metadata[idx]
             for roikey in integration_roi_data.keys():
                 try:
                     behavior_dict['scanimage_roi_{}'.format(roikey)].append(roidata[roikey])
@@ -251,20 +287,20 @@ def export_pybpod_files_core(bpod_session_dict,
         behavior_dict['scanimage_file_names'] = bpod_trial_file_names
         behavior_dict['scanimage_bpod_time_offset'] = np.asarray(bpod_scanimage_time_offset)
         behavior_dict['scanimage_first_frame_offset'] = np.asarray(scanimage_frame_time_offset)
+        behavior_dict['scanimage_tiff_headers'] = np.asarray(scanimage_metadata_list)
     else:
         print('no movie-behavior correspondance found ')
         behavior_dict['scanimage_file_names'] = 'no movie files found'
-    #%  %
-    #%
-    triggered = list()
+
     residual_tiff_files = {'median_bpod_si_time_offset':time_offset,
                            'triggered':list(),
                            'time_from_previous_trial_start' : list(),
                            'time_to_next_trial_start' : list(),
                            'previous_trial_index': list(),
                            'next_trial_index' : list(),
-                           'scanimage_file_names':list()}
-    for scanimage_fname, scanimage_timestamp in zip(residual_filenames,residual_timestamps):
+                           'scanimage_file_names':list(),
+                           'scanimage_tiff_headers':list()}
+    for scanimage_fname, scanimage_timestamp,scanimage_metadata in zip(residual_filenames,residual_timestamps,residual_metadata):
         if type(scanimage_timestamp) == float:
             residual_tiff_files['triggered'].append(False)
             movie_start_time_now = frame_timestamps_all[filenames_all==scanimage_fname][0] - datetime.timedelta(seconds = time_offset)
@@ -291,33 +327,21 @@ def export_pybpod_files_core(bpod_session_dict,
         residual_tiff_files['previous_trial_index'].append( prev_trial_idx)
         residual_tiff_files['next_trial_index'].append( next_trial_idx)
         residual_tiff_files['scanimage_file_names'].append(scanimage_fname)
-        
-    #%
+        residual_tiff_files['scanimage_tiff_headers'].append(scanimage_metadata)
+    
     behavior_dict['residual_tiff_files'] = residual_tiff_files
-    #%%
+    
     return behavior_dict
-# =============================================================================
-# #%%
-# import matplotlib.pyplot as plt
-# difi = list()
-# for lick_L,lick_R,trial_start in zip(behavior_dict['lick_L'],behavior_dict['lick_R'],behavior_dict['trial_start_times']):
-#     trial_time = trial_start.hour*3600+trial_start.minute*60 + trial_start.second
-#     #if len(lick_L) == len(lick_R):
-#         #difi.extend(lick_L-lick_R)
-#         #plt.plot(trial_time +lick_R, np.ones(len(lick_R)),'k|')
-#         
-#     plt.plot(trial_time +lick_R, np.ones(len(lick_R)),'k|')
-#     plt.plot(trial_time +lick_L, np.zeros(len(lick_L)),'k|')
-#     #break
-# =============================================================================
 #%%
-def export_single_pybpod_session(raw_behavior_dirs,subject_names,session,calcium_imaging_raw_session_dir,save_dir): # TODO not finished yet!!
-# =============================================================================
-#     if not type(raw_behavior_dirs) == list():
-#         raw_behavior_dirs = [raw_behavior_dirs]
-#     if not type(subject_names) == list():
-#         subject_names = [subject_names]
-# =============================================================================
+def export_single_pybpod_session(raw_behavior_dirs,
+                                 subject_names,
+                                 session,
+                                 calcium_imaging_raw_session_dir,
+                                 save_dir): 
+    if not type(raw_behavior_dirs) == list():
+        raw_behavior_dirs = [raw_behavior_dirs]
+    if not type(subject_names) == list():
+        subject_names = [subject_names]
     try:
         session_date = datetime.datetime.strptime(session,'%m%d%y')
     except:
@@ -345,18 +369,32 @@ def export_single_pybpod_session(raw_behavior_dirs,subject_names,session,calcium
     
     
 #%% this script will export behavior and pair it to imaging, then save it in a neat directory structure
-def export_pybpod_files(overwrite=False,behavior_export_basedir = '/home/rozmar/Data/Behavior/BCI_exported'):
-#overwrite = False
-#%%
-# =============================================================================
-#     overwrite=False
-#     behavior_export_basedir = '/home/rozmar/Data/Behavior/BCI_exported'
-# =============================================================================
-    
-    #%%
-    calcium_imaging_raw_basedir = dj.config['locations.imagingdata_raw']
-    raw_behavior_dirs =  dj.config['locations.behavior_dirs_raw'] 
-    
+def export_pybpod_files(behavior_export_basedir,
+                        calcium_imaging_raw_basedir,
+                        raw_behavior_dirs,
+                        overwrite = False):
+    """
+    Main function that exports pybpod csv files, pairs them with scanimage
+    tiffs and zaber json files and exports them all in a trial-based manner.
+    Files are read out from a given directory structure and saved in a similar
+    directory structure.
+    Parameters
+    ----------
+    behavior_export_basedir : str
+        path to directory where data will be exported
+    calcium_imaging_raw_basedir : str
+        path to directory where imagig data is found
+    raw_behavior_dirs : list of str
+        paths to directoies where pybpod projects are found
+    overwrite : Boolean, optional
+        If set to False (default), existing files are skipped
+
+    Returns
+    -------
+    None.
+
+    """
+
     projects = list()
     for projectdir in raw_behavior_dirs:
         projects.append(Project())
@@ -413,101 +451,94 @@ def export_pybpod_files(overwrite=False,behavior_export_basedir = '/home/rozmar/
                     #%
                     savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
                     print('{}/{} saved'.format(subject,session))
+
 # =============================================================================
-#                     print(behavior_dict['session_details'])
-#                     print(type(behavior_dict['session_details']))
-#                     if type(behavior_dict['session_details']) == np.ndarray:
-#                         timer.sleep(100000)
+# #%%
+# def check_discrepancies_in_behavior_export():
+#     behavior_export_basedir = '/home/rozmar/Data/Behavior/BCI_exported'
+#     calcium_imaging_raw_basedir = dj.config['locations.imagingdata_raw']
+#     setups = os.listdir(behavior_export_basedir)
+#     for setup in setups:
+#         if '.' in setup:
+#             continue
+#         subjects = os.listdir(os.path.join(behavior_export_basedir,setup))
+#         for subject in subjects:
+#             sessions = os.listdir(os.path.join(behavior_export_basedir,setup,subject))
+#             for session in sessions:
+#                 if '.npy' not in session:
+#                     continue
+#                 print([subject,session])
+#                 #%
+#                 bpoddata = np.load(os.path.join(behavior_export_basedir,setup,subject,session),allow_pickle = True).tolist()
+#                 raw_session_dir = os.path.join(calcium_imaging_raw_basedir,setup,subject,session[:-15])
+#                 tiffiles = list()
+#                 tiff_basenames = list()
+#                 tiff_indices = list()
+#                 h5files = list()
+#                 h5_basenames = list()
+#                 h5_indices = list()
+#                 files = os.listdir(raw_session_dir)
+#                 
+#                 for tiffile in files:
+#                     if '.tif' in tiffile:
+#                        tiffiles.append(tiffile) 
+#                        tiff_basenames.append(tiffile[:tiffile.rfind('_')])
+#                        idx_string = tiffile[tiffile.rfind('_')+1:tiffile.rfind('.')]
+#                        if '-' in idx_string:
+#                             idxes = np.arange(int(idx_string[:idx_string.find('-')]),int(idx_string[idx_string.find('-')+1:])+1)
+#                        elif ' (' in idx_string:
+#                             idxes = [int(idx_string[:idx_string.find(' (')])]
+#                        else:
+#                             idxes = [int(idx_string)]
+#                        tiff_indices.append(np.asarray(idxes))
+#                     elif 'h5' in tiffile:
+#                         h5files.append(tiffile) 
+#                         h5_basenames.append(tiffile[:tiffile.rfind('_')])
+#                         idx_string = tiffile[tiffile.rfind('_')+1:tiffile.rfind('.')]
+#                         if '-' in idx_string:
+#                             idxes = np.arange(int(idx_string[:idx_string.find('-')]),int(idx_string[idx_string.find('-')+1:])+1)
+#                         elif ' (' in idx_string:
+#                             idxes = [int(idx_string[:idx_string.find(' (')])]
+#                         else:
+#                             idxes = [int(idx_string)]
+#                         h5_indices.append(np.asarray(idxes))
+#                             
+#                      #
+#                 h5data = dict()
+#                 
+#                 for h5file in h5files:
+#                     ephysdata_list = utils_ephys.load_wavesurfer_file(os.path.join(raw_session_dir,h5file))
+#                     ephysdata_list_new = list()
+#                     for ephysdata in ephysdata_list:
+#                         ephysdata_list_new.append(utils_ephys.decode_bitcode(ephysdata))
+#                     h5data[h5file] = np.asarray(ephysdata_list_new)
+#                         #%
+#                 tiffiles = np.asarray(tiffiles)
+#                 residual_tiffiles = tiffiles
+#                 try:
+#                     print('median time offset: {}, std: {}'.format(np.nanmedian(bpoddata['scanimage_bpod_time_offset']),np.nanstd(bpoddata['scanimage_bpod_time_offset'])))
+#                 except:
+#                     print('no movie?')
+#                     continue
+#                 for trialnum, scanimagefile,timeoffset in zip(bpoddata['trial_num'],bpoddata['scanimage_file_names'],bpoddata['scanimage_bpod_time_offset']):
+#                     if type(scanimagefile)!=str:#='no movie for this trial':
+#                         for scanimagefile_now in scanimagefile:
+#                             residual_tiffiles = residual_tiffiles[residual_tiffiles!=scanimagefile_now]
+#                         scanimagefile = scanimagefile[0]
+#                         tiff_basename =scanimagefile[:scanimagefile.rfind('_')]
+#                         idx_string = scanimagefile[scanimagefile.rfind('_')+1:scanimagefile.rfind('.')]
+#                         if ' (' in idx_string:
+#                             tiff_idx = [int(idx_string[:idx_string.find(' (')])]
+#                         else:
+#                             tiff_idx = int(idx_string)
+#                         for h5file,h5_base,h5_idx in zip(h5files,h5_basenames,h5_indices):
+#                             if tiff_basename==h5_base:
+#                                 if tiff_idx in h5_idx:
+#                                     h5data[h5file][h5_idx==tiff_idx]
+#                                     bitcode_trial_num = h5data[h5file][h5_idx==tiff_idx][0]['bitcode_trial_nums'][0]
+#                                     if trialnum != bitcode_trial_num and bitcode_trial_num > 0:
+#                                         print('trialnum does not line up: {} vs {} in {} with {}'.format(trialnum,bitcode_trial_num,os.path.join(raw_session_dir,scanimagefile),h5file))
+#                                         print('timeoffset is {}'.format(timeoffset))
+#                                         
+# 
 # =============================================================================
-# =============================================================================
-#                     print('residual files: {}'.format(residual_filenames))
-#                     print('residual times: {}'.format(residual_timestamps))
-# =============================================================================
-                    #timer.sleep(10000)
-#%%
-def check_discrepancies_in_behavior_export():
-    behavior_export_basedir = '/home/rozmar/Data/Behavior/BCI_exported'
-    calcium_imaging_raw_basedir = dj.config['locations.imagingdata_raw']
-    setups = os.listdir(behavior_export_basedir)
-    for setup in setups:
-        if '.' in setup:
-            continue
-        subjects = os.listdir(os.path.join(behavior_export_basedir,setup))
-        for subject in subjects:
-            sessions = os.listdir(os.path.join(behavior_export_basedir,setup,subject))
-            for session in sessions:
-                if '.npy' not in session:
-                    continue
-                print([subject,session])
-                #%
-                bpoddata = np.load(os.path.join(behavior_export_basedir,setup,subject,session),allow_pickle = True).tolist()
-                raw_session_dir = os.path.join(calcium_imaging_raw_basedir,setup,subject,session[:-15])
-                tiffiles = list()
-                tiff_basenames = list()
-                tiff_indices = list()
-                h5files = list()
-                h5_basenames = list()
-                h5_indices = list()
-                files = os.listdir(raw_session_dir)
-                
-                for tiffile in files:
-                    if '.tif' in tiffile:
-                       tiffiles.append(tiffile) 
-                       tiff_basenames.append(tiffile[:tiffile.rfind('_')])
-                       idx_string = tiffile[tiffile.rfind('_')+1:tiffile.rfind('.')]
-                       if '-' in idx_string:
-                            idxes = np.arange(int(idx_string[:idx_string.find('-')]),int(idx_string[idx_string.find('-')+1:])+1)
-                       elif ' (' in idx_string:
-                            idxes = [int(idx_string[:idx_string.find(' (')])]
-                       else:
-                            idxes = [int(idx_string)]
-                       tiff_indices.append(np.asarray(idxes))
-                    elif 'h5' in tiffile:
-                        h5files.append(tiffile) 
-                        h5_basenames.append(tiffile[:tiffile.rfind('_')])
-                        idx_string = tiffile[tiffile.rfind('_')+1:tiffile.rfind('.')]
-                        if '-' in idx_string:
-                            idxes = np.arange(int(idx_string[:idx_string.find('-')]),int(idx_string[idx_string.find('-')+1:])+1)
-                        elif ' (' in idx_string:
-                            idxes = [int(idx_string[:idx_string.find(' (')])]
-                        else:
-                            idxes = [int(idx_string)]
-                        h5_indices.append(np.asarray(idxes))
-                            
-                     #
-                h5data = dict()
-                
-                for h5file in h5files:
-                    ephysdata_list = utils_ephys.load_wavesurfer_file(os.path.join(raw_session_dir,h5file))
-                    ephysdata_list_new = list()
-                    for ephysdata in ephysdata_list:
-                        ephysdata_list_new.append(utils_ephys.decode_bitcode(ephysdata))
-                    h5data[h5file] = np.asarray(ephysdata_list_new)
-                        #%
-                tiffiles = np.asarray(tiffiles)
-                residual_tiffiles = tiffiles
-                try:
-                    print('median time offset: {}, std: {}'.format(np.nanmedian(bpoddata['scanimage_bpod_time_offset']),np.nanstd(bpoddata['scanimage_bpod_time_offset'])))
-                except:
-                    print('no movie?')
-                    continue
-                for trialnum, scanimagefile,timeoffset in zip(bpoddata['trial_num'],bpoddata['scanimage_file_names'],bpoddata['scanimage_bpod_time_offset']):
-                    if type(scanimagefile)!=str:#='no movie for this trial':
-                        for scanimagefile_now in scanimagefile:
-                            residual_tiffiles = residual_tiffiles[residual_tiffiles!=scanimagefile_now]
-                        scanimagefile = scanimagefile[0]
-                        tiff_basename =scanimagefile[:scanimagefile.rfind('_')]
-                        idx_string = scanimagefile[scanimagefile.rfind('_')+1:scanimagefile.rfind('.')]
-                        if ' (' in idx_string:
-                            tiff_idx = [int(idx_string[:idx_string.find(' (')])]
-                        else:
-                            tiff_idx = int(idx_string)
-                        for h5file,h5_base,h5_idx in zip(h5files,h5_basenames,h5_indices):
-                            if tiff_basename==h5_base:
-                                if tiff_idx in h5_idx:
-                                    h5data[h5file][h5_idx==tiff_idx]
-                                    bitcode_trial_num = h5data[h5file][h5_idx==tiff_idx][0]['bitcode_trial_nums'][0]
-                                    if trialnum != bitcode_trial_num and bitcode_trial_num > 0:
-                                        print('trialnum does not line up: {} vs {} in {} with {}'.format(trialnum,bitcode_trial_num,os.path.join(raw_session_dir,scanimagefile),h5file))
-                                        print('timeoffset is {}'.format(timeoffset))
-                                        
