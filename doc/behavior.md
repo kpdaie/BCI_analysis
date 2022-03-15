@@ -39,6 +39,7 @@ variables starting with zaber_ are variables of the zaber arduino GUI except for
 - trial_num: bpod trial number (it restarts from 1 every time a new session is started), this is sent to wavesurfer as a bitcode
 - zaber_move_forward:timing of steps when the lickport moves forward one step, in seconds from trial start-
 </br>
+
 - var_AutoWater: true if autowater is turned on in the trial
 - var_AutoWaterTimeMultiplier: valve time multiplier for autowater
 - var_BaselineZaberForwardStepFrequency: forward step frequency during open loop trials. if set to 0, the lickport moves only on scanimage input
