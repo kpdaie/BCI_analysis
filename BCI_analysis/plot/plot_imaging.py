@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import time
+import os
+from .. import io
 
 def plot_trial_averaged_trace_2sessions(data_dict, day_ind, start_time=-2.5, 
                                         end_time=10, baseline_start_time = None,
@@ -58,30 +61,44 @@ def plot_trial_averaged_trace_2sessions(data_dict, day_ind, start_time=-2.5,
     plt.plot(time_yesterday,avg_traces_yesterday[:,data_dict['cni'][day_ind]],color='k')
 
 
-def grabData(mouseID):
-    '''
-    
-
+def grab_data(data_dir,mouse_ID=None):
+    """
     Returns the data dictionary speicified in
     BCI_analysis.io_matlab.read_multisession_mat, but now with the mouse specified
+    Parameters
+    ----------
+    mouse_ID : str, optional
+        Water restriction ID of mouse, if not provided, user can type it in.
+    data_dir : str, optional
+        Folder for multi-session .mat files.
+
+    Returns
     -------
-    dataDict : dictionary
-        description of 
-    mouseID : str
-        name of mouse
-    '''
+    data_dict : dictionary
+        Multi-session imaging data, output of 
+        BCI_analysis.io_matlab.read_multisession_mat()
+
+    """
+    if mouse_ID==None: ## Specify Mouse 
+        mouse_ID = input("What is the Mouse's Name? ")
+        
+    potential_files = os.listdir(data_dir)
+    mouse_file = None
+    for potential_file in potential_files:
+        if potential_file.lower().startswith(mouse_ID.lower()) and potential_file.lower().endswith('.mat'):
+            mouse_file = potential_file
+    if mouse_file == None:
+        print('ERROR: no appropriate file found - choose from the following: {}'.format(potential_files))
+        return None
     
-    ## Specify Mouse and load its data
-    mouseID = input("What is the Mouse's Name? ")
-    dataDir = 'C:\\Users\\Lucas\\BCIAnalysis\\BCI_data\\'
-    mousePath = dataDir + mouseID + '_030222v8.mat'
-    dataDict = bci.io_matlab.read_multisession_mat(mousePath) #currently loads file every time script is run
-    return dataDict
+    mouse_path = os.path.join(data_dir,mouse_file)
+    data_dict = io.io_matlab.read_multisession_mat(mouse_path) 
+    print('{} loaded'.format(mouse_path))
+    return data_dict
 
 def delta_activity_plot(dataDict, dayOfInterest, baseline_correction_range = 1.5,
                         what_to_compare = 1, ):
-    import time
-    '''
+    """
     delta_activity_plot plots a scatter plot by comparing the distances of 
     each neuron from the conditioned neuron to the average flourescent activity
     of each neuron in a session
@@ -108,7 +125,7 @@ def delta_activity_plot(dataDict, dayOfInterest, baseline_correction_range = 1.5
     conditioned neuron against the change in flourescence across specified session
     and previous session
     
-    '''
+    """
     
     ## Setting day and day before to be an integer
     day = int(dayOfInterest) + 1 #this is why you shouldn't do day 1
@@ -186,9 +203,7 @@ def delta_activity_plot(dataDict, dayOfInterest, baseline_correction_range = 1.5
     
     
 def mean_ROI(dataDict, dayOfInterest):
-    '''
-    
-
+    """
     Parameters
     ----------
     dataDict : dict
@@ -202,7 +217,7 @@ def mean_ROI(dataDict, dayOfInterest):
     An iamshow plot that acts as a heat map of the ROI, more yellow means more
     average activity during session of interest
 
-    '''
+    """
     # dayOfInterest = input('Day of interest (day 1 = -1... dont do day 1): ')
     day = int(dayOfInterest) + 1 #this is why you shouldn't do day 1
     print('Interested in day '+dayOfInterest)
@@ -218,9 +233,7 @@ def mean_ROI(dataDict, dayOfInterest):
     
     
 def plot_trialwise_closed_loop(dataDict, dayOfInterest):
-    '''
-    
-
+    """
     Parameters
     ----------
     dataDict : Dict
@@ -235,7 +248,7 @@ def plot_trialwise_closed_loop(dataDict, dayOfInterest):
     for each neuron in a session, more yellow means more activity, y axis is 
     neurons x axis is time
 
-    '''
+    """
     # dayOfInterest = input('Day of interest (day 1 = -1... dont do day 1): ')
     day = int(dayOfInterest) + 1 #this is why you shouldn't do day 1
     print('Interested in day '+dayOfInterest)
