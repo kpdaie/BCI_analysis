@@ -248,10 +248,11 @@ def pybpod_dataframe_to_dict(data):
         scanimage_message = 'no scanimage message'
         for past_trial_line in  df_past_trial.iterrows():
             past_trial_line = past_trial_line[1]
-            if 'Movie names for trial:' in past_trial_line['MSG']:
+            if 'Movie names for trial:' in str(past_trial_line['MSG']):
                 behavior_movie_names = past_trial_line['MSG'][23:].strip('[]').split(',')
-            if 'scanimage file' in past_trial_line['MSG']:
+            if 'scanimage file' in str(past_trial_line['MSG']):
                 scanimage_message = past_trial_line['MSG'][16:]
+
                 
         trial_start_time = data['PC-TIME'][trial_start_idx]
         trial_end_time = data['PC-TIME'][trial_end_idx]

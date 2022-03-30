@@ -338,6 +338,7 @@ def export_single_pybpod_session(raw_behavior_dirs,
                                  subject_names,
                                  session,
                                  calcium_imaging_raw_session_dir,
+                                 zaber_root_folder,
                                  save_dir): 
     if not type(raw_behavior_dirs) == list():
         raw_behavior_dirs = [raw_behavior_dirs]
@@ -430,15 +431,15 @@ def export_pybpod_files(behavior_export_basedir,
                         print('session already exported: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
                         continue
                     
-                    bpod_session_dict = find_pybpod_sessions([subject_wr_name,subject],session_date.strftime('%Y%m%d'),projects)
+                    bpod_session_dict = find_pybpod_sessions([subject_wr_name,subject,subject_wr_name.lower(),subject.lower()],session_date.strftime('%Y%m%d'),projects)
                    
                     
                     
                     print('exporting behavior from {}/{}'.format(subject,session))
-                    try:
-                        behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
-                    except:
-                        print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
+                    #try:
+                    behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
+                    #except:
+                    #    print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
                     
                     if type(behavior_dict) != dict:
                         print('skipping this one')
@@ -449,12 +450,15 @@ def export_pybpod_files(behavior_export_basedir,
                     bpod_export_file = '{}-bpod_zaber.npy'.format(session)
                     np.save(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict)
                     bpod_export_file = '{}-bpod_zaber.mat'.format(session)
-# =============================================================================
-#                     behavior_dict_matlab = behavior_dict.copy()
-#                     behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
-#                     behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
-#                     savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
-# =============================================================================
+                    behavior_dict_matlab = behavior_dict.copy()
+                    behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
+                    behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
+                    behavior_dict_matlab.pop('scanimage_tiff_headers')
+                    try:
+                        behavior_dict_matlab['residual_tiff_files'].pop('scanimage_tiff_headers')
+                    except:
+                        pass
+                    savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
                     print('{}/{} saved'.format(subject,session))
 
 # =============================================================================
