@@ -89,9 +89,9 @@ def export_pybpod_files_core(bpod_session_dict,
         setup_name = csv_data['setup'][0]
         experimenter_name = csv_data['experimenter'][0]
         zaber_dict = io.io_pybpod.add_zaber_info_to_pybpod_dict(behavior_dict,
-                                                                      subject_name,
-                                                                      setup_name,
-                                                                      zaber_root_folder)
+                                                                subject_name,
+                                                                setup_name,
+                                                                zaber_root_folder)
         
         for key in zaber_dict.keys():
             behavior_dict['zaber_{}'.format(key)] = zaber_dict[key]
@@ -333,24 +333,48 @@ def export_pybpod_files_core(bpod_session_dict,
     behavior_dict['residual_tiff_files'] = residual_tiff_files
     
     return behavior_dict
-#%%
-def export_single_pybpod_session(raw_behavior_dirs,
-                                 subject_names,
-                                 session,
-                                 calcium_imaging_raw_session_dir,
-                                 zaber_root_folder,
-                                 save_dir): 
-    if not type(raw_behavior_dirs) == list():
-        raw_behavior_dirs = [raw_behavior_dirs]
-    if not type(subject_names) == list():
-        subject_names = [subject_names]
+
+    
+ 
+def export_single_pybpod_session(session,
+                              subject_names,
+                              save_dir,
+                              calcium_imaging_raw_session_dir,
+                              raw_behavior_dirs,
+                              zaber_root_folder):
+    """
+    Main function that exports a single pybpod csv file, pairs them with scanimage
+    tiffs and zaber json files and exports them all in a trial-based manner.
+    Files are read out from a given directory structure and saved in a similar
+    directory structure.
+
+    Parameters
+    ----------
+    session : str
+        session to export, it's a date formatted as %m%d%y or %Y-%m-%d
+    subject_names : list of str
+        names of subjects to export, or if the subject has multiple aliases, add all
+    save_dir : str
+        path where the file should be saved
+    calcium_imaging_raw_session_dir : str
+        path where the scanimage files can be found.
+    raw_behavior_dirs : list
+        list of directories where the behavior data should be shearched
+    zaber_root_folder : str
+        path to zaber data (one above the subjects folder).
+
+    Returns
+    -------
+    None.
+
+    """
     try:
         session_date = datetime.datetime.strptime(session,'%m%d%y')
     except:
         try:
             session_date = datetime.datetime.strptime(session,'%Y-%m-%d')
         except:
-            print('cannot understand date for session dir: {}'.format(session))
+            print('cannot understand date for session dir: {} - should be a date'.format(session))
             #continue
     
     projects = list()
@@ -361,15 +385,20 @@ def export_single_pybpod_session(raw_behavior_dirs,
     bpod_session_dict = find_pybpod_sessions(subject_names,session_date.strftime('%Y%m%d'),projects)
     behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
     bpod_export_file = '{}-bpod_zaber.npy'.format(session)
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
     np.save(os.path.join(save_dir,bpod_export_file),behavior_dict)
     bpod_export_file = '{}-bpod_zaber.mat'.format(session)
     behavior_dict_matlab = behavior_dict.copy()
     behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
     behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
-    #%
+    behavior_dict_matlab.pop('scanimage_tiff_headers')
+    try:
+        behavior_dict_matlab['residual_tiff_files'].pop('scanimage_tiff_headers')
+    except:
+        pass
     savemat(os.path.join(save_dir,bpod_export_file),behavior_dict_matlab)
     
-    
+
 #%% this script will export behavior and pair it to imaging, then save it in a neat directory structure
 def export_pybpod_files(behavior_export_basedir,
                         calcium_imaging_raw_basedir,
@@ -436,10 +465,10 @@ def export_pybpod_files(behavior_export_basedir,
                     
                     
                     print('exporting behavior from {}/{}'.format(subject,session))
-                    #try:
-                    behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
-                    #except:
-                    #    print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
+                    try:
+                        behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
+                    except:
+                        print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
                     
                     if type(behavior_dict) != dict:
                         print('skipping this one')
