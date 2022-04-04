@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 from .. import io
+from scipy.stats.stats import pearsonr as cor
 
 def plot_trial_averaged_trace_2sessions(data_dict, day_ind, start_time=-2.5, 
                                         end_time=10, baseline_start_time = None,
@@ -263,3 +264,95 @@ def plot_trialwise_closed_loop(dataDict, dayOfInterest):
     plt.show()
 
 
+def correlation_deltaActivity(dataDict, dayOfInterest):
+    ## Set Up Day of Session
+    # dayOfInterest = input('Day of interest (day 1 = -1... dont do day 1): ')
+    if int(dayOfInterest) == 0:
+        while int(dayOfInterest) <= 0: #this is so we dont get stupid values
+            print('Incorrect Day Entry, redo please')
+            dayOfInterest = input('Day of interest (Day 1 = "1") ')
+    day = int(dayOfInterest) - 1 #Since python starts at 0, we are subtracting one to account for indexing
+    print('Interested in day '+dayOfInterest)
+
+
+    #Grab Day-Specific Data
+    today_dff_allTrials = dataDict['dff_trialwise_closed_loop'][day]
+    yesterday_dff_allTrials = dataDict['dff_trialwise_closed_loop'][day-1]
+
+    if 'conditioned_neuron_idx' in dataDict.keys(): #some sessions dont have a conditioned neuron
+        todays_conditioned_neuron_index = dataDict['conditioned_neuron_idx'][0][day] #this is the 'cn' field in mat file
+        # yesterdays_conditioned_neuron_index = dataDict['conditioned_neuron_idx'][0][day-1]#this is the 'cn' field in mat file
+    else:
+        print('Some Sessions do not include conditioned neurons -- cannot use dataset')
+        quit()
+
+    #Average All Trials Together Including CNs
+    avg_trial_dff_today = np.nanmean(today_dff_allTrials, axis=2)
+    avg_trial_dff_yesterday = np.nanmean(yesterday_dff_allTrials, axis=2)
+
+    #Pick Out the Avg CN
+    avg_cn_today = avg_trial_dff_today[:,todays_conditioned_neuron_index]
+    # avg_cn_yesterday = avg_trial_dff_yesterday[:, yesterdays_conditioned_neuron_index]
+
+    #Correlate Each Avg Neuron dff to the Avg CN dff
+    todays_correlation = [cor(avg_trial_dff_today[:,i], avg_cn_today)[0] for i in range(avg_trial_dff_today.shape[1])] #0 is the right index for corr because when corr conditioned with itself it should end up being nearly ~1
+    #length of todays correlation should be the number of neurons in session, ex: BCI11 has 245 neurons for day 3
+    todays_correlation.sort() #dont forget to sort to make sure its all in order!
+
+
+    #Bin All Correlated Values into 5 bins
+    binning_size = len(todays_correlation)//5 
+    corr_bin1 = todays_correlation[0:binning_size]
+    corr_bin2 = todays_correlation[(binning_size+1):binning_size*2]
+    corr_bin3 = todays_correlation[(binning_size*2)+1:binning_size*3]
+    corr_bin4 = todays_correlation[(binning_size*3)+1:binning_size*4]
+    corr_bin5 = todays_correlation[(binning_size*4)+1:len(todays_correlation)]
+
+    #Averaging Each corr bin
+    avg_bin1 = np.nanmean(corr_bin1)
+    avg_bin2 = np.nanmean(corr_bin2)
+    avg_bin3 = np.nanmean(corr_bin3)
+    avg_bin4 = np.nanmean(corr_bin4)
+    avg_bin5 = np.nanmean(corr_bin5)
+
+
+    X = [avg_bin1, avg_bin2, avg_bin3, avg_bin4, avg_bin5] #this will be the 5 bins of our x axis
+
+
+    # Now lets go back and subtract avg dff of today from the avg dff of yesterday
+    if len(avg_trial_dff_today[1,:]) == len(avg_trial_dff_yesterday[1,:]):
+        difference_in_dff = np.subtract(avg_trial_dff_today, avg_trial_dff_yesterday) #this is basically doing today - yesterday
+        #then lets average each neuron to one value per neuron for easier plotting
+        avg_delta_dff = np.nanmean(difference_in_dff,axis=0)
+    else:
+        print('Error: You are attempting to compare two days with different ROIs')
+        quit()
+
+    # Now we shall bin each delta_dff
+    delta_bin1 = avg_delta_dff[0:binning_size]
+    delta_bin2 = avg_delta_dff[(binning_size+1):binning_size*2]
+    delta_bin3 = avg_delta_dff[(binning_size*2)+1:binning_size*3]
+    delta_bin4 = avg_delta_dff[(binning_size*3)+1:binning_size*4]
+    delta_bin5 = avg_delta_dff[(binning_size*4)+1:binning_size*5]
+
+    #now lets average each delta_dff bin
+    avg_dff_bin1 = np.nanmean(delta_bin1)
+    avg_dff_bin2 = np.nanmean(delta_bin2)
+    avg_dff_bin3 = np.nanmean(delta_bin3)
+    avg_dff_bin4 = np.nanmean(delta_bin4)
+    avg_dff_bin5 = np.nanmean(delta_bin5)
+    #Calculate Error of each avg dff bin
+    err1 = np.std(delta_bin1)/(np.sqrt(len(delta_bin1)))
+    err2 = np.std(delta_bin2)/(np.sqrt(len(delta_bin2)))
+    err3 = np.std(delta_bin3)/(np.sqrt(len(delta_bin3)))
+    err4 = np.std(delta_bin4)/(np.sqrt(len(delta_bin4)))
+    err5 = np.std(delta_bin5)/(np.sqrt(len(delta_bin5)))
+
+    Y = [avg_dff_bin1, avg_dff_bin2, avg_dff_bin3, avg_dff_bin4, avg_dff_bin5]
+    Yerr = [err1, err2, err3, err4, err5]
+
+    plt.errorbar(X, Y, yerr=Yerr)
+    plt.ylabel(' Day2 Corr - Day1 Corr ')
+    plt.xlabel(' Average Correlations with Conditioned Neuron ')
+    plt.title(' Delta_Activity Against Correlation with CN ')
+    plt.show()
