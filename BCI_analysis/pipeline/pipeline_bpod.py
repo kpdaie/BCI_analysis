@@ -374,7 +374,11 @@ def export_single_pybpod_session(session,
         try:
             session_date = datetime.datetime.strptime(session,'%Y-%m-%d')
         except:
-            print('cannot understand date for session dir: {} - should be a date'.format(session))
+            try:
+                session_date = datetime.datetime.strptime(session[:6],'%m%d%y')
+            except:
+
+                print('cannot understand date for session dir: {} - should be a date'.format(session))
             #continue
     
     projects = list()
