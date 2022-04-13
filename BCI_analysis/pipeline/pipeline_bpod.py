@@ -374,7 +374,11 @@ def export_single_pybpod_session(session,
         try:
             session_date = datetime.datetime.strptime(session,'%Y-%m-%d')
         except:
-            print('cannot understand date for session dir: {} - should be a date'.format(session))
+            try:
+                session_date = datetime.datetime.strptime(session[:6],'%m%d%y')
+            except:
+
+                print('cannot understand date for session dir: {} - should be a date'.format(session))
             #continue
     
     projects = list()
@@ -449,8 +453,11 @@ def export_pybpod_files(behavior_export_basedir,
                         try:
                             session_date = datetime.datetime.strptime(session,'%Y-%m-%d')
                         except:
-                            print('cannot understand date for session dir: {}'.format(session))
-                            continue
+                            try:
+                                session_date = datetime.datetime.strptime(session[:6],'%m%d%y')
+                            except:
+                                print('cannot understand date for session dir: {}'.format(session))
+                                continue
                     
                     calcium_imaging_raw_session_dir = os.path.join(calcium_imaging_raw_subject_dir,session)
                     bpod_export_dir = os.path.join(behavior_export_basedir,setup,subject)
