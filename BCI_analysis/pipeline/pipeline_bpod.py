@@ -362,6 +362,16 @@ def export_single_pybpod_session(session,
         list of directories where the behavior data should be shearched
     zaber_root_folder : str
         path to zaber data (one above the subjects folder).
+    
+    Example
+    -------
+    import BCI_analysis
+    BCI_analysis.pipeline_bpod.export_single_pybpod_session(session = '040122',
+                                 subject_names = ['BCI26'],
+                                 save_dir= '/home/rozmar/Data/',
+                                 calcium_imaging_raw_session_dir = '/mnt/Data/Calcium_imaging/raw/KayvonScope/BCI_26/040122',
+                                 raw_behavior_dirs = ['/mnt/Data/Behavior/raw/KayvonScope/BCI'],
+                                 zaber_root_folder = '/mnt/Data/Behavior/BCI_Zaber_data/KayvonScope')
 
     Returns
     -------
@@ -426,7 +436,21 @@ def export_pybpod_files(behavior_export_basedir,
         path to directory where zaber data is found
     overwrite : Boolean, optional
         If set to False (default), existing files are skipped
-
+    
+    Example
+    -------
+    import BCI_analysis
+    behavior_export_basedir = '/mnt/Data/Behavior/BCI_exported'
+    calcium_imaging_raw_basedir = '/mnt/Data/Calcium_imaging/raw'
+    raw_behavior_dirs = ['/mnt/Data/Behavior/raw/DOM-3/BCI',
+                         '/mnt/Data/Behavior/raw/DOM3-MMIMS/BCI',
+                         '/mnt/Data/Behavior/raw/KayvonScope/BCI']
+    zaber_root_folder = '/mnt/Data/Behavior/BCI_Zaber_data'
+    BCI_analysis.pipeline_bpod.export_pybpod_files(behavior_export_basedir,
+                                                    calcium_imaging_raw_basedir,
+                                                    raw_behavior_dirs, 
+                                                    zaber_root_folder,
+                                                    overwrite=False)
     Returns
     -------
     None.
