@@ -20,7 +20,13 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
     -------
     cond_s2p_idx : list of int
         one number for each frame, which was the conditioned neuron -  should be the same for the whole session
-
+    
+    Example
+    -------
+    session_bpod_file = '/mnt/Data/Behavior/BCI_exported/KayvonScope/BCI_29/042922-bpod_zaber.npy'
+    session_ops_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/042922/ops.npy'
+    fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
+    cond_s2p_idx = find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = True)
     """
     behavior_dict = np.load(session_bpod_file,allow_pickle = True).tolist()
     ops =  np.load(session_ops_file,allow_pickle = True).tolist()
