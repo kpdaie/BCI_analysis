@@ -28,6 +28,7 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
     fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
     cond_s2p_idx = find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = True)
     """
+    #%
     behavior_dict = np.load(session_bpod_file,allow_pickle = True).tolist()
     ops =  np.load(session_ops_file,allow_pickle = True).tolist()
     stat =  np.load(fov_stats_file,allow_pickle = True).tolist()
@@ -52,7 +53,12 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
             roinames_list = list() 
             for roi in rois:
                 roinames_list.append(roi['name'])
-            roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+            try:
+                roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+            except:
+                print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
+                conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
+                roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
         else:
             conditioned_neuron_name  =''
             roi_idx = None
