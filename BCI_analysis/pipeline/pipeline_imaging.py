@@ -83,8 +83,9 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         roinames_list.append(roi['name'])
     cond_s2p_idx = list()
     for roi_idx_now in roi_indices:    
-
-        
+        if roi_idx_now is None:
+            cond_s2p_idx.append(None)
+            continue
         med_list = list()
         dist_list = list()
         for cell_stat in stat:
@@ -104,11 +105,12 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         ax_meanimage.imshow(ops['meanImg'])#,cmap = 'gray')
         mask = np.zeros_like(ops['meanImg'])
         for i,roi_stat in enumerate(stat):
-            if i == np.unique(cond_s2p_idx)[0]:
+            if i == np.unique(np.asarray(cond_s2p_idx)[np.asarray(cond_s2p_idx) != None])[0]:
                 mask[roi_stat['ypix'],roi_stat['xpix']] = 2
             else:
                 mask[roi_stat['ypix'],roi_stat['xpix']] = 1
             #break
+        maskimg = ax_rois.imshow(mask)#,alpha = .5)    #cmap = 'hot',
         ax_rois.plot(np.asarray(centerXY_list)[:,0]*Lx-x_offset,np.asarray(centerXY_list)[:,1]*Ly-y_offset,'ro')
-    
+    #%
     return cond_s2p_idx
