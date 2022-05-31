@@ -130,14 +130,20 @@ def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, 
                         print("No corresponding behavior data found")
                     else:
                         bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
-                        trial_st = bpod_zaber_data['trial_start_times']    
-                        trial_et = bpod_zaber_data['trial_end_times']
-                        gocue_t = bpod_zaber_data['go_cue_times']
+                        files_with_movies = []
+                        for k in bpod_zaber_data['scanimage_file_names']:
+                            if k == 'no movie for this trial':
+                                files_with_movies.append(False)
+                            else:
+                                files_with_movies.append(True)                        
+                        trial_st = bpod_zaber_data['trial_start_times'][files_with_movies]    
+                        trial_et = bpod_zaber_data['trial_end_times'][files_with_movies]
+                        gocue_t = bpod_zaber_data['go_cue_times'][files_with_movies]
                         trial_times = [(trial_et[i]-trial_st[i]).total_seconds() for i in range(len(trial_st))]
-                        trial_hit = bpod_zaber_data['trial_hit']
-                        lick_L = bpod_zaber_data['lick_L']
+                        trial_hit = bpod_zaber_data['trial_hit'][files_with_movies]
+                        lick_L = bpod_zaber_data['lick_L'][files_with_movies]
 
-                        threshold_crossing_times = bpod_zaber_data['threshold_crossing_times']
+                        threshold_crossing_times = bpod_zaber_data['threshold_crossing_times'][files_with_movies]
                 
                 
                     dict_all = {'F_sessionwise': F,
@@ -159,11 +165,11 @@ def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, 
                                 'time_since_trial_start': tsta,
                                 'go_cue_times': gocue_t,
                                 'lick_times': lick_L,
-                                'reward_times': bpod_zaber_data['reward_L'],
+                                'reward_times': bpod_zaber_data['reward_L'][files_with_movies],
                                 'trial_times': trial_times,
                                 'hit': trial_hit,
                                 'threshold_crossing_times': threshold_crossing_times, 
-                                'zaber_move_forward': bpod_zaber_data['zaber_move_forward'],
+                                'zaber_move_forward': bpod_zaber_data['zaber_move_forward'][files_with_movies],
                                 'sampling_rate': fs,
                                 'all_si_filenames': all_si_filenames,
                                 'closed_loop_filenames': closed_loop_filenames,
