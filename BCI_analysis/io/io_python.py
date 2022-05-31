@@ -107,4 +107,4 @@ def read_sessionwise_npy(file_path):
                 'closed_loop_filenames': data["closed_loop_filenames"],
             }
         
-    return dict_all
+    return data_dict
