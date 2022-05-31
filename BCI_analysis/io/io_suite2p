@@ -1,0 +1,148 @@
+import numpy as np
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import glob
+import json
+from pipeline.pipeline_imaging import find_conditioned_neuron_idx
+
+
+def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, overwrite=True):
+    """
+
+    mice_name = "BCI_26"
+    suite2p_path = "bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/"
+    raw_data = "bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/"
+    behavior_data = "bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/"
+    save_path = "/home/jupyter/bucket/Data/Calcium_imaging/sessionwise_tba"
+    """
+
+    suite2p_data = os.path.join(suite2p_data, mice_name)
+    raw_suite2p = os.path.join(raw_suite2p, mice_name)
+    behavior_data = os.path.join(behavior_data, mice_name)
+    mice_save_path = os.path.join(save_path, mice_name)
+
+    max_frames = 240
+    frames_prev_trial = 40
+    frames_this_trial = max_frames - frames_prev_trial
+
+    os.makedirs(mice_save_path, exist_ok=True)
+
+    for fov in os.listdir(suite2p_data):
+    # for fov in ["FOV_04", "FOV_05"]:
+        fov_path = os.path.join(suite2p_data, fov)
+            
+        mean_image = np.load(os.path.join(fov_path, "mean_image.npy"))
+        max_image = np.load(os.path.join(fov_path, "max_image.npy"))
+        cell_masks = np.load(os.path.join(fov_path, "cell_masks.npy"), allow_pickle=True)
+        stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
+        rest_masks = np.load(os.path.join(fov_path, "cell_masks_rest.npy"), allow_pickle=True)
+        # ops = np.load(os.path.join(fov_path, "ops.npy"), allow_pickle=True)
+            
+        for session_date in next(os.walk(fov_path))[1]:
+        # for session_date in ["040822"]:
+            if session_date == "Z-stacks":
+                continue
+
+            session_save_path = os.path.join(mice_save_path, f"{mice_name}-{session_date}-{fov}.npy")
+            if os.path.exists(session_save_path) and overwrite==False:
+                print("Session already exists, and overwrite=False")
+                continue
+            
+            else: 
+                print(f"FOV: {fov}, Session Date: {session_date}")
+                session_path = os.path.join(fov_path, session_date)
+                ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
+                fs = ops['fs']
+                tsta = np.arange(-frames_prev_trial, frames_this_trial, 1).astype(float)/fs
+                
+                F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
+                F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+                dff = (F-F0)/F0
+                # dff_noise = np.load(os.path.join(session_path, "dFF_noise.npy"), allow_pickle=True)
+                with open(os.path.join(session_path, "filelist.json")) as json_file:
+                    filelist = json.load(json_file)   
+                
+                all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
+                closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.startswith("neuron")]
+                frame_num = np.asarray(filelist['frame_num_list'])
+                filename_start_frame = np.asarray([0] + np.cumsum(frame_num).tolist())
+
+                F_trialwise_all = np.ones((max_frames, F.shape[0], len(all_si_filenames)))*np.nan
+                F_trialwise_closed_loop = np.ones((max_frames, F.shape[0], len(closed_loop_filenames)))*np.nan
+
+                dff_trialwise_all = np.ones((max_frames, F.shape[0], len(all_si_filenames)))*np.nan
+                dff_trialwise_closed_loop =  np.ones((max_frames, F.shape[0], len(closed_loop_filenames)))*np.nan
+
+                counter = 0
+                for i, filename in enumerate(all_si_filenames):
+                    start_frame = filename_start_frame[i]
+                    end_frame = filename_start_frame[i+1]
+                    
+                    if end_frame - start_frame > frames_this_trial:
+                        end_frame = start_frame + frames_this_trial
+                    if i != 0:
+                        start_frame = start_frame - frames_prev_trial # taking 40 time points before trial starts
+                        
+                    if filename in closed_loop_filenames:
+                        F_trialwise_closed_loop[:end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+                        dff_trialwise_closed_loop[:end_frame-start_frame, :, counter] = dff[:, start_frame:end_frame].T
+                        counter += 1
+                        
+                    F_trialwise_all[:end_frame-start_frame, :, i] = F[:, start_frame:end_frame].T
+                    dff_trialwise_all[:end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
+                                            
+                behavior_fname = os.path.join(behavior_data, f"{session_date}-bpod_zaber.npy")
+                cn_idx = find_conditioned_neuron_idx(behavior_fname, os.path.join(session_path, "ops.npy"), os.path.join(fov_path, "stat.npy"), plot=True)
+                # print(f"cn idx: {np.unique(cn_idx)}")
+                roi_centers = [(stat[i]['xpix'].mean(), stat[i]['ypix'].mean()) for i in range(len(stat))]
+                roi_centers = np.asarray(roi_centers)
+                roi_centers_cn = roi_centers - roi_centers[cn_idx[0]]
+                dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
+
+                if not os.path.isfile(behavior_fname):
+                    print("No corresponding behavior data found")
+                else:
+                    bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
+                    trial_st = bpod_zaber_data['trial_start_times']    
+                    trial_et = bpod_zaber_data['trial_end_times']
+                    gocue_t = bpod_zaber_data['go_cue_times']
+                    trial_times = [(trial_et[i]-trial_st[i]).total_seconds() for i in range(len(trial_st))]
+                    trial_hit = bpod_zaber_data['trial_hit']
+                    trial_num = bpod_zaber_data['trial_num']
+                    lick_R = bpod_zaber_data['lick_R']
+                    lick_L = bpod_zaber_data['lick_L']
+
+                    threshold_crossing_times = bpod_zaber_data['threshold_crossing_times']
+            
+            
+                dict_all = {'F_sessionwise': F,
+                            'F_trialwise_all': F_trialwise_all,
+                            'F_trialwise_closed_loop': F_trialwise_closed_loop,
+                            'dff_sessionwise': dff,
+                            'dff_trialwise_all': F_trialwise_all,
+                            'dff_trialwise_closed_loop': F_trialwise_closed_loop,
+                            'cn': cn_idx,
+                            'roiX': roi_centers[:, 0],
+                            'roiY': roi_centers[:, 1],
+                            'dist': dist,
+                            'FOV': fov,
+                            'session_date': session_date,
+                            'session_path': session_path,
+                            'mouse': mice_name,
+                            'mean_image': mean_image,
+                            'max_image': max_image,
+                            'time_since_trial_start': tsta,
+                            'go_cue_times': gocue_t,
+                            'lick_times': lick_L,
+                            'reward_times': bpod_zaber_data['reward_L'],
+                            'trial_times': trial_times,
+                            'hit': trial_hit,
+                            'threshold_crossing_times': threshold_crossing_times, 
+                            'zaber_move_forward': bpod_zaber_data['zaber_move_forward'],
+                            'sampling_rate': fs,
+                            'all_si_filenames': all_si_filenames,
+                            'closed_loop_filenames': closed_loop_filenames,
+                        }
+                np.save(session_save_path, dict_all)
+                print(f"Saved to {session_save_path}")
