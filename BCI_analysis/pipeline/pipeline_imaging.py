@@ -48,8 +48,11 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
             if len(conditioned_neuron_name) == 0:
                 conditioned_neuron_name = ''
             rois = metadata['metadata']['json']['RoiGroups']['integrationRoiGroup']['rois']   
+            if type(rois) is not list:
+                rois = [rois]
             roinames_list = list() 
             for roi in rois:
+                print(roi)
                 roinames_list.append(roi['name'])
             try:
                 roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
