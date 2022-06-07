@@ -2,7 +2,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import json
-from pipeline.pipeline_imaging import find_conditioned_neuron_idx
+from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
 
 
 def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, overwrite=True, fov_list=None, session_list=None):
