@@ -132,7 +132,7 @@ def suite2p_to_npy(suite2p_path,
                         dff_trialwise_all[:end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
                                                 
                     behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
-                    cn_idx = find_conditioned_neuron_idx(behavior_fname, os.path.join(session_path, "ops.npy"), os.path.join(fov_path, "stat.npy"), plot=True)
+                    cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, os.path.join(session_path, "ops.npy"), os.path.join(fov_path, "stat.npy"), plot=True)
                     # print(f"cn idx: {np.unique(cn_idx)}")
                     roi_centers = [(stat[i]['xpix'].mean(), stat[i]['ypix'].mean()) for i in range(len(stat))]
                     roi_centers = np.asarray(roi_centers)
@@ -140,7 +140,8 @@ def suite2p_to_npy(suite2p_path,
                     dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
 
                     if not os.path.isfile(behavior_fname):
-                        print("No corresponding behavior data found")
+                        print("No corresponding behavior data found for {}".format(session_date))
+                        break
                     else:
                         bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
                         files_with_movies = []
