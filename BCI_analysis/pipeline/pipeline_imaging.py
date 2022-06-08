@@ -30,10 +30,6 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
     fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
     cond_s2p_idx,closed_loop_trial,scanimage_filenames = find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = True)
     """
-    session_bpod_file = '/mnt/Data/Behavior/BCI_exported/KayvonScope/BCI_29/042922-bpod_zaber.npy'
-    session_ops_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/042922/ops.npy'
-    fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
-    
     behavior_dict = np.load(session_bpod_file,allow_pickle = True).tolist()
     ops =  np.load(session_ops_file,allow_pickle = True).tolist()
     stat =  np.load(fov_stats_file,allow_pickle = True).tolist()
