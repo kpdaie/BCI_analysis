@@ -2,29 +2,42 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import json
-from pipeline.pipeline_imaging import find_conditioned_neuron_idx
+from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
 
 
-def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, overwrite=True, fov_list=None, session_list=None):
+def suite2p_to_npy(suite2p_path, 
+                   raw_data_path, 
+                   behavior_data_path, 
+                   save_path, 
+                   overwrite=True, 
+                   mice_name=None, 
+                   fov_list=None, 
+                   session_list=None,
+                   max_frames = 240,
+                   frames_prev_trial = 40):
     """
     This script saves the relevant data into .npy files that can be analysed later
     ----------
-    mice_name : list/string
-        List of Mouse names to convert to npy
     suite2p_path : str
         path to suite2p data directory
-    raw_data : str
+    raw_data_path : str
         path to raw 2p data
-    behavior_data: str
+    behavior_data_path: str
         path to DLC bpod file data
     save_path: str
         path where npy files should be saved
     overwrite: bool, optional
         If set to True, npy files will be overwritten
+    mice_name : list/string
+        List of Mouse names to convert to npy
     fov_list: list
         If you want to convert a sessions from a specific FOV only
     session_list: list
         If you want to convert specific sessions only
+    max_frames: int
+        Number of frames from the current trial that will appear in the trialwise matrices
+    frames_prev_trial: int
+        Number of frames from previous trial that will appear in the trialwise matrices
 
     Returns
     -------
@@ -35,22 +48,21 @@ def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, 
     -------
     mice_name = "BCI_26"
     suite2p_path = "bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/"
-    raw_data = "bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/"
-    behavior_data = "bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/"
+    raw_data_path = "bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/"
+    behavior_data_path = "bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/"
     save_path = "/home/jupyter/bucket/Data/Calcium_imaging/sessionwise_tba"
-    suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, overwrite=True)
+    suite2p_to_npy(suite2p_path, raw_data_path, behavior_data_path, save_path, overwrite=True, mice_name = mice_name)
     """
-    max_frames = 240
-    frames_prev_trial = 40
     frames_this_trial = max_frames - frames_prev_trial
-
+    if mice_name is None:
+        mice_name = os.listdir(suite2p_path)
     if type(mice_name) == str:
         mice_name = mice_name.split()
     
     for mouse in mice_name:
         suite2p_data = os.path.join(suite2p_path, mouse)
-        raw_suite2p = os.path.join(raw_data, mouse)
-        behavior_data = os.path.join(behavior_data, mouse)
+        raw_suite2p = os.path.join(raw_data_path, mouse)
+        behavior_data_path = os.path.join(behavior_data_path, mouse)
         mice_save_path = os.path.join(save_path, mouse)
 
         os.makedirs(mice_save_path, exist_ok=True)
@@ -91,7 +103,8 @@ def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, 
                         filelist = json.load(json_file)   
                     
                     all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
-                    closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.startswith("neuron")]
+                    closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.lower().startswith("neuron")] # TODO, we should pull out this information from the scanimage tiff header
+
                     frame_num = np.asarray(filelist['frame_num_list'])
                     filename_start_frame = np.asarray([0] + np.cumsum(frame_num).tolist())
 
@@ -107,7 +120,7 @@ def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, 
                         
                         if end_frame - start_frame > frames_this_trial:
                             end_frame = start_frame + frames_this_trial
-                        if i != 0:
+                        if i != 0: #TODO this way the first trial is not aligned to the rest of the trials
                             start_frame = start_frame - frames_prev_trial # taking 40 time points before trial starts
                             
                         if filename in closed_loop_filenames:
@@ -118,7 +131,7 @@ def suite2p_to_npy(mice_name, suite2p_path, raw_data, behavior_data, save_path, 
                         F_trialwise_all[:end_frame-start_frame, :, i] = F[:, start_frame:end_frame].T
                         dff_trialwise_all[:end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
                                                 
-                    behavior_fname = os.path.join(behavior_data, f"{session_date}-bpod_zaber.npy")
+                    behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
                     cn_idx = find_conditioned_neuron_idx(behavior_fname, os.path.join(session_path, "ops.npy"), os.path.join(fov_path, "stat.npy"), plot=True)
                     # print(f"cn idx: {np.unique(cn_idx)}")
                     roi_centers = [(stat[i]['xpix'].mean(), stat[i]['ypix'].mean()) for i in range(len(stat))]

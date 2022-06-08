@@ -17,23 +17,32 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
     Returns
     -------
     cond_s2p_idx : list of int
-        one number for each frame, which was the conditioned neuron -  should be the same for the whole session
+        one number for each trial, which was the conditioned neuron -  should be the same for the whole session
+    closed_loop_trial : list of bool
+        one True/False for each trial, if this was a closed loop trial
+    scanimage_filenames : list of array of str
+        scanimage filenames for each trial
     
     Example
     -------
     session_bpod_file = '/mnt/Data/Behavior/BCI_exported/KayvonScope/BCI_29/042922-bpod_zaber.npy'
     session_ops_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/042922/ops.npy'
     fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
-    cond_s2p_idx = find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = True)
+    cond_s2p_idx,closed_loop_trial,scanimage_filenames = find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = True)
     """
-    #%
+    session_bpod_file = '/mnt/Data/Behavior/BCI_exported/KayvonScope/BCI_29/042922-bpod_zaber.npy'
+    session_ops_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/042922/ops.npy'
+    fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
+    
     behavior_dict = np.load(session_bpod_file,allow_pickle = True).tolist()
     ops =  np.load(session_ops_file,allow_pickle = True).tolist()
     stat =  np.load(fov_stats_file,allow_pickle = True).tolist()
     conditioned_neuron_name_list = []
     roi_indices = []
+    closed_loop_trial = []
+    scanimage_filenames = []
     for i,(filename,tiff_header) in enumerate(zip(behavior_dict['scanimage_file_names'],behavior_dict['scanimage_tiff_headers'])):    #find names of conditioned neurons
-        
+        scanimage_filenames.append(filename)
         if len(behavior_dict['scanimage_roi_outputChannelsRoiNames'][i]) >0:
             metadata  = tiff_header.tolist()[0]
             for roi_fcn_i, roi_fnc_name in enumerate(behavior_dict['scanimage_roi_outputChannelsNames'][i]):
@@ -48,6 +57,8 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
             if len(conditioned_neuron_name) == 0:
                 conditioned_neuron_name = ''
             rois = metadata['metadata']['json']['RoiGroups']['integrationRoiGroup']['rois']   
+            if type(rois) is not list:
+                rois = [rois]
             roinames_list = list() 
             for roi in rois:
                 roinames_list.append(roi['name'])
@@ -60,6 +71,11 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         else:
             conditioned_neuron_name  =''
             roi_idx = None
+        if roi_idx != None and metadata['metadata']['hIntegrationRoiManager']['enable'] == metadata['metadata']['hIntegrationRoiManager']['outputChannelsEnabled'] == 'true':
+            closed_loop_trial.append(True)
+        else:
+            closed_loop_trial.append(False)
+            
         conditioned_neuron_name_list.append(conditioned_neuron_name)
         roi_indices.append(roi_idx)
 
@@ -116,5 +132,5 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
             #break
         maskimg = ax_rois.imshow(mask)#,alpha = .5)    #cmap = 'hot',
         ax_rois.plot(np.asarray(centerXY_list)[:,0]*Lx-x_offset,np.asarray(centerXY_list)[:,1]*Ly-y_offset,'ro')
-    #%
-    return cond_s2p_idx
+
+    return cond_s2p_idx,closed_loop_trial,scanimage_filenames
