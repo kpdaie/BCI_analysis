@@ -103,9 +103,8 @@ def suite2p_to_npy(suite2p_path,
                         filelist = json.load(json_file)   
                     
                     all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
-                    closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.startswith("neuron")]
-                    
-                    
+                    closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.lower().startswith("neuron")] # TODO, we should pull out this information from the scanimage tiff header
+
                     frame_num = np.asarray(filelist['frame_num_list'])
                     filename_start_frame = np.asarray([0] + np.cumsum(frame_num).tolist())
 
@@ -121,7 +120,7 @@ def suite2p_to_npy(suite2p_path,
                         
                         if end_frame - start_frame > frames_this_trial:
                             end_frame = start_frame + frames_this_trial
-                        if i != 0:
+                        if i != 0: #TODO this way the first trial is not aligned to the rest of the trials
                             start_frame = start_frame - frames_prev_trial # taking 40 time points before trial starts
                             
                         if filename in closed_loop_filenames:
