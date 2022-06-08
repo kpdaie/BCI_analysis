@@ -73,7 +73,7 @@ def read_sessionwise_npy(file_path):
             list of filenames corresponding to closedloop trials
     """
     file_path,file_name = os.path.split(file_path)
-    data = np.load(file_path, allow_pickle=True).tolist()
+    data = np.load(os.path.join(file_path,file_name), allow_pickle=True).tolist()
 
     data_dict ={'file_path':file_path,
                 'file_name':file_name,
