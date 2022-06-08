@@ -5,7 +5,6 @@ __pycache__/
 
 # Data
 bucket/
-
 # C extensions
 *.so
 

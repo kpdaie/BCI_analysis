@@ -1,8 +1,11 @@
+#%%
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 import json
-from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
+import sys
+sys.path.append('../')
+from pipeline.pipeline_imaging import find_conditioned_neuron_idx
 
 
 def suite2p_to_npy(suite2p_path, 
@@ -193,3 +196,4 @@ def suite2p_to_npy(suite2p_path,
                             }
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
+# %%
