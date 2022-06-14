@@ -139,5 +139,6 @@ def get_aligned_data(suite2p_path,
         F_trial = interpolate_ca_data(dlc_trial, F_trial)
         F_behavior.append(F_trial)
 
+    trial_lengths = [len(F_behavior[i]) for i in range(len(F_behavior))]
     F_behavior = np.hstack(F_behavior)
-    return F_behavior, dlc_data
+    return F_behavior, dlc_data, trial_lengths
