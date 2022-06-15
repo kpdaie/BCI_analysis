@@ -7,7 +7,7 @@ import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
 
-def collapse_dlc_data(dlc_data: pd.DataFrame, target_length=None, mode='edge'):
+def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge'):
     pad_width = target_length - dlc_data.shape[0]%target_length
     mean_window = (dlc_data.shape[0] + pad_width)//target_length
     bodyparts = list(dlc_data.columns.levels[0])

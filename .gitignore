@@ -5,6 +5,8 @@ __pycache__/
 
 # Data
 bucket/
+Plots/use_data
+
 # C extensions
 *.so
 
