@@ -42,6 +42,14 @@ def pc_dataframe(DLC_aligned: pd.DataFrame, drop_pole=False) -> pd.DataFrame:
             dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
             dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
             continue
+        if bp == 'EyeUp' and drop_pole == True:
+            dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
+            dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
+            continue
+        if bp == 'EyeLeft' and drop_pole == True:
+            dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
+            dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
+            continue
         pca = PCA(n_components=2)
         X_t = pca.fit_transform(dlc_cpy[bp].values)
         print(f"{bp}: {pca.explained_variance_ratio_}")    
@@ -79,14 +87,14 @@ def normalize_and_window(DLC_aligned, F_aligned, start, end, window, save=False)
 
     print(f"Normalize DLC data and apply a sliding window of {window}")
     for i in tqdm(range(0, dlc_cpy.shape[1])):
-        temp = normalize.fit_transform(dlc_cpy.values[start:end, i].reshape(-1, 1))
+        temp = normalize.fit_transform(dlc_cpy.values[:, i].reshape(-1, 1))
         DLC_aligned_n[:, i] = rollingfun(temp, window=window).flatten()
 
 
     return dlc_cpy, DLC_aligned_n, F_aligned_n
 
 
-def apply_lr_plot(DLC_aligned, F_aligned, ca_data, start=0, end=100000, window=200):
+def apply_lr_plot(DLC_aligned, F_aligned, ca_data, start=50000, end=150000, window=200):
 
     dlc_cpy, DLC_aligned_n, F_aligned_n = normalize_and_window(DLC_aligned, F_aligned, start, end, window)
 #%%
@@ -125,9 +133,12 @@ def apply_lr_plot(DLC_aligned, F_aligned, ca_data, start=0, end=100000, window=2
 
 # %%
 
-def sliding_fit(DLC_aligned, F_aligned, start=0, end=100000, window=100, slide=[0]):
+def sliding_fit(DLC_aligned, F_aligned, normalize=True, start=0, end=100000, window=100, slide=[0]):
 
-    _, DLC_aligned_n, F_aligned_n = normalize_and_window(DLC_aligned, F_aligned, start, end, window)
+    if normalize:
+        _, DLC_aligned_n, F_aligned_n = normalize_and_window(DLC_aligned, F_aligned, start, end, window)
+    else:
+        DLC_aligned_n, F_aligned_n = DLC_aligned, F_aligned
 
     cn = ca_data['cn'][0]
     _, ax = plt.subplots(len(slide), 2, figsize=(16,10))
@@ -148,8 +159,8 @@ def sliding_fit(DLC_aligned, F_aligned, start=0, end=100000, window=100, slide=[
         scores, beta_vals, intercept = linear_regression(F_, DLC_aligned_n)
         scores = np.asarray(scores)
 # %%
-        ax[i,0].plot(F_[cn, 0:10000], label=f'neuron {cn} Flourescence Trace')
-        ax[i,0].plot(((beta_vals[cn]@DLC_aligned_n.T) + intercept[cn])[0:10000], label='Fitted Data')
+        ax[i,0].plot(F_[cn, :], label=f'neuron {cn} Flourescence Trace')
+        ax[i,0].plot(((beta_vals[cn]@DLC_aligned_n.T) + intercept[cn]), label='Fitted Data')
         ax[i,0].set_title(f'slide = {k}')
         ax[i,0].set_xlabel("Time")
         ax[i,0].set_ylabel("Normalized F")
@@ -163,7 +174,7 @@ def sliding_fit(DLC_aligned, F_aligned, start=0, end=100000, window=100, slide=[
     save_path = os.path.join(plt_save_path, f"{mouse}-{session}-{camera}-{FOV}-window={window}-slide={slide}")
     plt.tight_layout()
     plt.savefig(save_path)
-    plt.show(block=False)
+    # plt.show(block=False)
 
 # # for window in [1, 10, 100, 200, 400, 1000]:
 # #     apply_lr_plot(DLC_aligned, F_aligned, ca_data, window=window)
@@ -175,11 +186,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str, default=None) 
     parser.add_argument('--save', type=str, default=None) 
+    parser.add_argument('--apply_lr', type=bool, default=False)
     args = parser.parse_args()
     
     print(args.path)
     if args.path:
-        a = np.load(args.path)
+        a = np.load(args.path, allow_pickle=True)
         ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
 
         DLC_aligned_n = a['DLC_aligned_n']
@@ -189,8 +201,19 @@ if __name__ == "__main__":
         beta_vals = a['beta_vals']
         intercept = a['intercept']
         cn = ca_data['cn'][0]
+        dlc_headers = a['dlc_headers']
 
-        print(scores)
+        sliding_fit(DLC_aligned_n, F_aligned_n, normalize=False, window=200, slide=[-2000, -1000, 0, 1000, 2000])
+        good_neuron = cn
+        fig, ax = plt.subplots(len(dlc_headers)+1, 1, figsize=(16,12), sharex=True)
+
+        ax[0].plot(F_aligned_n[good_neuron, :])
+        for i, bp in enumerate(np.argsort(np.abs(beta_vals[good_neuron]))[::-1]):
+            ax[i+1].plot(dlc_cpy[:, bp], label=f"beta_val = {beta_vals[good_neuron, bp]:0.3f}")
+            ax[i+1].set_ylabel(f"{dlc_headers[bp]}", rotation='horizontal', ha='right')
+            ax[i+1].legend()
+        plt.show()
+
 
     if args.save:
         mouse = "BCI_26"
@@ -202,7 +225,7 @@ if __name__ == "__main__":
         ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
         start = 0
         end = DLC_aligned.shape[0]
-        window = 100
+        window = 200
 
         dlc_cpy, DLC_aligned_n, F_aligned_n = normalize_and_window(DLC_aligned, F_aligned, start, end, window)
         scores, beta_vals, intercept = linear_regression(F_aligned_n, DLC_aligned_n)
@@ -210,5 +233,21 @@ if __name__ == "__main__":
         t = time.localtime()
         current_time = time.strftime("%H%M%S", t)
         os.makedirs(os.path.join(plt_save_path, "use_data", mouse), exist_ok=True)
-        save_path = os.path.join(plt_save_path, "use_data", mouse, f"window{window}-{end}-"+current_time)
-        np.savez(save_path, DLC_aligned_n=DLC_aligned_n, F_aligned_n=F_aligned_n, dlc_cpy=dlc_cpy, scores=scores, beta_vals=beta_vals, intercept=intercept)
+        save_path = os.path.join(plt_save_path, "use_data", mouse, f"{session}-window{window}-{end}")
+        np.savez(save_path, DLC_aligned_n=DLC_aligned_n, F_aligned_n=F_aligned_n, dlc_cpy=dlc_cpy, dlc_headers=np.asarray(dlc_cpy.columns.values), trial_lengths=trial_lengths, scores=scores, beta_vals=beta_vals, intercept=intercept)
+
+    if args.apply_lr:
+
+        mouse = "BCI_26"
+        FOV = "FOV_04"
+        camera = "side"
+        session = "041522"
+        F_aligned, DLC_aligned, trial_lengths = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path,
+                                        sessionwise_data_path, mouse, FOV, camera, session)
+        ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
+        start = 0
+        end = DLC_aligned.shape[0]
+        window = 100
+
+        for window in [1, 10, 100, 200, 400, 1000]:
+            apply_lr_plot(DLC_aligned, F_aligned, ca_data, window=window)
