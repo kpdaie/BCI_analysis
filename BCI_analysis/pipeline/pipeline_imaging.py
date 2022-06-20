@@ -79,8 +79,8 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         conditioned_neuron_name_list.append(conditioned_neuron_name)
         roi_indices.append(roi_idx)
 
-    x_offset = np.median(ops['xoff_list'][:100])
-    y_offset  =np.median(ops['yoff_list'][:100])
+    x_offset = -1*np.median(ops['xoff_list'][:100])
+    y_offset  =-1*np.median(ops['yoff_list'][:100])
     fovdeg = list()
     for s in metadata['metadata']['hRoiManager']['imagingFovDeg'].strip('[]').split(' '): fovdeg.extend(s.split(';'))
     fovdeg = np.asarray(fovdeg,float)
@@ -102,7 +102,7 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
                                             np.arcsin(meanimg_dict['rotation_matrix'][1,0]),
                                             -1*np.arcsin(meanimg_dict['rotation_matrix'][0,1]),
                                             np.arccos(meanimg_dict['rotation_matrix'][1,1])]))
-                print('rotating ROIs with {} degrees'.format(np.degrees(angle)))
+                print('offset: {} pixels, rotation {} degrees'.format([x_offset,y_offset], np.degrees(angle)))
                 ox = oy = 0
                 qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
                 qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
