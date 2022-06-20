@@ -149,7 +149,7 @@ def suite2p_to_npy(suite2p_path,
                         bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
                         files_with_movies = []
                         for k in bpod_zaber_data['scanimage_file_names']:
-                            if k == 'no movie for this trial':
+                            if str(k) == 'no movie for this trial':
                                 files_with_movies.append(False)
                             else:
                                 files_with_movies.append(True)                        
