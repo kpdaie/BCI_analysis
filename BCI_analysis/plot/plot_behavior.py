@@ -178,7 +178,6 @@ def sliding_fit(DLC_aligned, F_aligned, normalize=True, start=0, end=100000, win
 
 # # for window in [1, 10, 100, 200, 400, 1000]:
 # #     apply_lr_plot(DLC_aligned, F_aligned, ca_data, window=window)
-#
 # sliding_fit(DLC_aligned, F_aligned, window=100, slide=[-2000, -1000, -400, 0, 400, 1000, 2000])
 
 if __name__ == "__main__":

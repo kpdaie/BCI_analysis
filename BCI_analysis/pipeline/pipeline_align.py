@@ -85,12 +85,14 @@ def get_aligned_data(suite2p_path,
 
     bpod_filepath = os.path.join(bpod_path, mouse, session+"-bpod_zaber.npy")
     bpod_data = np.load(bpod_filepath, allow_pickle=True).tolist()
-    behavior_movie_names = bpod_data['behavior_movie_name_list']
+    behavior_movie_names = bpod_data['behavior_movie_name_list'][:-1]
     trial_start_times = bpod_data['trial_start_times']
 
     ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
     F = ca_data['F_sessionwise']
     fs = ca_data['sampling_rate']
+    lick_times = ca_data['lick_times']
+    reward_times = ca_data['reward_times']
 
     with open(os.path.join(suite2p_path, mouse, FOV, session, "filelist.json")) as f:
         filelist = json.load(f)
@@ -99,6 +101,8 @@ def get_aligned_data(suite2p_path,
     print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
 
     F_behavior = []
+    lt = []
+    rt = []
     dlc_data = None
 
     for i, bm_name in tqdm(enumerate(behavior_movie_names)):
@@ -138,7 +142,82 @@ def get_aligned_data(suite2p_path,
 
         F_trial = interpolate_ca_data(dlc_trial, F_trial)
         F_behavior.append(F_trial)
+        lt.append(lick_times[i])
+        rt.append(reward_times[i])
 
     trial_lengths = [len(F_behavior[i]) for i in range(len(F_behavior))]
     F_behavior = np.hstack(F_behavior)
-    return F_behavior, dlc_data, trial_lengths
+    return F_behavior, dlc_data, trial_lengths, lt
+
+
+def align_licks(suite2p_path,
+                dlc_base_dir,
+                bpod_path,
+                sessionwise_data_path,
+                mouse = "BCI_26",
+                FOV = "FOV_04",
+                camera = "side",
+                session = "041022"):
+
+
+    bpod_filepath = os.path.join(bpod_path, mouse, session+"-bpod_zaber.npy")
+    bpod_data = np.load(bpod_filepath, allow_pickle=True).tolist()
+    behavior_movie_names = bpod_data['behavior_movie_name_list'][:-1]
+    trial_start_times = bpod_data['trial_start_times']
+
+    ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
+    F = ca_data['F_sessionwise']
+    fs = ca_data['sampling_rate']
+    lick_times = ca_data['lick_times']
+    reward_times = ca_data['reward_times']
+
+    with open(os.path.join(suite2p_path, mouse, FOV, session, "filelist.json")) as f:
+        filelist = json.load(f)
+
+    cl_trial_list = [filelist['file_name_list'][i] for i in range(len(filelist['frame_num_list'])) if filelist['file_name_list'][i].startswith("neuron")]
+    print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
+
+    F_behavior = []
+    lt = []
+    rt = []
+    dlc_data = None
+
+    for i, bm_name in tqdm(enumerate(behavior_movie_names)):
+
+        if type(bm_name) == str:
+            print(f"{camera} camera not found for trial {i}, skipping")
+            continue
+        
+        camera_movies = []
+        for video_file in bm_name:
+            if camera in video_file: 
+                camera_movies.append(video_file)
+        
+        if len(camera_movies) == 0:
+            print(f"{camera} camera not found for trial {i}, skipping")
+            continue
+        elif len(camera_movies) > 1:
+            print(f"Multiple {camera} camera files found for trial {i}, skipping")
+            continue
+        
+        # video_path = camera_movies[0]
+        # dlc_file_name = video_path[video_path.find(camera)+len(camera)+1:].split("/") #[mouse, session_id, trial_id]
+        # dlc_folder = os.path.join(dlc_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
+        # trial_id = dlc_file_name[2][:-5]
+        #
+        # trial_json = os.path.join(dlc_folder, trial_id+".json")
+        # with open(trial_json) as f:
+        #     trial_metadata = json.load(f)
+        # 
+        # frame_times_rel0 = (trial_start_times[i] - trial_start_times[0]).total_seconds() + np.asarray(trial_metadata['frame_times'])
+        # F_trial = F[:, int(frame_times_rel0[0]*fs):int(frame_times_rel0[-1]*fs)]
+        #
+        # trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
+        # dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0).drop('likelihood', level=1, axis=1)
+        # # dlc_trial = collapse_dlc_data(dlc_trial, F_trial.shape[1], mode='edge')
+        # dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
+        #
+        # F_trial = interpolate_ca_data(dlc_trial, F_trial)
+        # F_behavior.append(F_trial)
+        lt.append(lick_times[i])
+        rt.append(reward_times[i])
