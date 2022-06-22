@@ -1,8 +1,12 @@
+#%%
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 import json
-from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
+import sys
+import argparse
+sys.path.append("/home/labadmin/Github/BCI_analysis/BCI_analysis/")
+from pipeline.pipeline_imaging import find_conditioned_neuron_idx
 
 
 def suite2p_to_npy(suite2p_path, 
@@ -72,7 +76,11 @@ def suite2p_to_npy(suite2p_path,
 
         for fov in fov_list:
             fov_path = os.path.join(suite2p_data, fov)
-            mean_image = np.load(os.path.join(fov_path, "mean_image.npy"))
+            try:
+                mean_image = np.load(os.path.join(fov_path, "mean_image.npy"))
+            except OSError as e:
+                print(f"Files Not present for this {fov}, skipping")
+                continue
             max_image = np.load(os.path.join(fov_path, "max_image.npy"))
             stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
 
@@ -97,6 +105,7 @@ def suite2p_to_npy(suite2p_path,
                     
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+                    
                     dff = (F-F0)/F0
 
                     with open(os.path.join(session_path, "filelist.json")) as json_file:
@@ -149,7 +158,7 @@ def suite2p_to_npy(suite2p_path,
                         bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
                         files_with_movies = []
                         for k in bpod_zaber_data['scanimage_file_names']:
-                            if str(k) == 'no movie for this trial':
+                            if k == 'no movie for this trial':
                                 files_with_movies.append(False)
                             else:
                                 files_with_movies.append(True)                        
@@ -183,6 +192,7 @@ def suite2p_to_npy(suite2p_path,
                                 'go_cue_times': gocue_t,
                                 'lick_times': lick_L,
                                 'reward_times': bpod_zaber_data['reward_L'][files_with_movies],
+                                'trial_start_times': trial_st,
                                 'trial_times': trial_times,
                                 'hit': trial_hit,
                                 'threshold_crossing_times': threshold_crossing_times, 
@@ -193,3 +203,20 @@ def suite2p_to_npy(suite2p_path,
                             }
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
+# %%
+
+if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--workstation', type=str, default=None) 
+    args = parser.parse_args()
+
+    if args.workstation == "mohit":
+        overwrite = True
+        dlc_base_dir = os.path.abspath("bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
+        bpod_path = os.path.abspath("bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
+        suite2p_path = os.path.abspath("bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
+        raw_suite2p = os.path.abspath("bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/")
+        save_path = os.path.abspath("bucket/Data/Calcium_imaging/sessionwise_tba/")
+        
+        suite2p_to_npy(suite2p_path, raw_suite2p, bpod_path, save_path, mice_name=["BCI_26"], overwrite=overwrite)
