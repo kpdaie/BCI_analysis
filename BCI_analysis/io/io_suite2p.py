@@ -56,6 +56,7 @@ def suite2p_to_npy(suite2p_path,
     save_path = "/home/jupyter/bucket/Data/Calcium_imaging/sessionwise_tba"
     suite2p_to_npy(suite2p_path, raw_data_path, behavior_data_path, save_path, overwrite=True, mice_name = mice_name)
     """
+    #%%
     frames_this_trial = max_frames - frames_prev_trial
     if mice_name is None:
         mice_name = os.listdir(suite2p_path)
@@ -76,11 +77,11 @@ def suite2p_to_npy(suite2p_path,
         for fov in fov_list:
             fov_path = os.path.join(suite2p_data, fov)
             try:
-                mean_image = np.load(os.path.join(fov_path, "mean_image.npy"))
+                mean_image = np.load(os.path.join(fov_path, "mean_image.npy")) #TODO the mean image should come from the session and not from the FOV
             except OSError as e:
                 print(f"Files Not present for this {fov}, skipping")
                 continue
-            max_image = np.load(os.path.join(fov_path, "max_image.npy"))
+            max_image = np.load(os.path.join(fov_path, "max_image.npy"))#TODO the max image should come from the session and not from the FOV
             stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
 
             if session_list is None:
@@ -105,6 +106,9 @@ def suite2p_to_npy(suite2p_path,
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
                     
+                    channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
+                    F+= channel_offset_dict['channel_offset']
+                    F0+=channel_offset_dict['channel_offset']                    
                     dff = (F-F0)/F0
 
                     with open(os.path.join(session_path, "filelist.json")) as json_file:
@@ -200,5 +204,6 @@ def suite2p_to_npy(suite2p_path,
                                 'all_si_filenames': all_si_filenames,
                                 'closed_loop_filenames': closed_loop_filenames,
                             }
+                    #%%
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
