@@ -5,8 +5,7 @@ import matplotlib.pyplot as plt
 import json
 import sys
 import argparse
-sys.path.append("/home/labadmin/Github/BCI_analysis/BCI_analysis/")
-from pipeline.pipeline_imaging import find_conditioned_neuron_idx
+from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
 
 
 def suite2p_to_npy(suite2p_path, 
@@ -158,7 +157,7 @@ def suite2p_to_npy(suite2p_path,
                         bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
                         files_with_movies = []
                         for k in bpod_zaber_data['scanimage_file_names']:
-                            if k == 'no movie for this trial':
+                            if str(k) == 'no movie for this trial':
                                 files_with_movies.append(False)
                             else:
                                 files_with_movies.append(True)                        
@@ -203,20 +202,3 @@ def suite2p_to_npy(suite2p_path,
                             }
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
-# %%
-
-if __name__ == "__main__":
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--workstation', type=str, default=None) 
-    args = parser.parse_args()
-
-    if args.workstation == "mohit":
-        overwrite = True
-        dlc_base_dir = os.path.abspath("bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
-        bpod_path = os.path.abspath("bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
-        suite2p_path = os.path.abspath("bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
-        raw_suite2p = os.path.abspath("bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/")
-        save_path = os.path.abspath("bucket/Data/Calcium_imaging/sessionwise_tba/")
-        
-        suite2p_to_npy(suite2p_path, raw_suite2p, bpod_path, save_path, mice_name=["BCI_26"], overwrite=overwrite)
