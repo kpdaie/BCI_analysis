@@ -65,15 +65,17 @@ def read_multisession_mat(full_file_path):
     data_dict = {'file_path':file_path,
                  'file_name':file_name,
                  'subject':data['mouse'][0],
-                 'session_dates':[datetime.strptime(str(int(i)).zfill(6),'%M%d%Y').date() for i in data['sessionDate']],
+                 #maing this a placeholder for time being...
+                  'session_dates' : [['empty'] for i in data['sessionDate']],# 'session_dates':[datetime.strptime(str(int(i)).zfill(6),'%M%d%Y').date() for i in data['sessionDate']],
                  'session_file_names':data['file'],
                  'scanimage_file_names':data['all_si_filenames'],
                  'closed_loop_scanimage_file_names':data['closed_loop_filenames'],
                  'n_days':len(data['mouse']),
-                 'conditioned_neuron_idx':(np.asarray(data['cn'],int).flatten()-1).tolist(), # matlab to python indexing
+                
+                 #apparently some mice have inconsistent dimensions for conditioned_neuron_indexes? -- line 85 error for BCI15
                  'dff_sessionwise_all_epochs':data['dff_sessionwise_all_epochs'],
                  'dff_sessionwise_closed_loop':data['dff_sessionwise_closed_loop'],
-                 'dff_trialwise_closed_loop':data['dff_trialwise_closed_loop'], # this one is missing from many files, commented out for now
+                 'dff_trialwise_closed_loop':data['dff_trialwise_closded_loop'], # this one is missing from many files, commented out for now
                  'distance_from_conditioned_neuron':data['dist'],
                  'mean_image':data['mean_image'],
                  'f_sessionwise_closed_loop':data['f_sessionwise_closed_loop'],
@@ -82,5 +84,10 @@ def read_multisession_mat(full_file_path):
                  'roi_center_x':data['roiX'],
                  'roi_center_y':data['roiY']
                  }
+    
+    try: #will try unless there exists a session with no conditioned neurons
+        data_dict['conditioned_neuron_idx']=(np.array(data['cn'],int).flatten()-1).tolist(), # matlab to python indexing
+    except ValueError:
+        print('Some Neurons do not have conditioned neurons')
     #%%
     return data_dict
