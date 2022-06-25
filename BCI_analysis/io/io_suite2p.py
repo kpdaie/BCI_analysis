@@ -97,8 +97,13 @@ def suite2p_to_npy(suite2p_path,
                     
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+                    
+                    channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
+                    F += channel_offset_dict['channel_offset']
+                    F0 += channel_offset_dict['channel_offset']
+                    
                     dff = (F-F0)/F0
-
+                    
                     with open(os.path.join(session_path, "filelist.json")) as json_file:
                         filelist = json.load(json_file)   
                     
