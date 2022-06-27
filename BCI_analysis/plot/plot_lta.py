@@ -13,6 +13,7 @@ sys.path.append("/home/labadmin/Github/BCI_analysis/BCI_analysis/")
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
+from plot.plot_utils import rollingfun
 
 #%% 
 
@@ -121,12 +122,12 @@ for i, bm_name in tqdm(enumerate(behavior_movie_names)):
     dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True)
     F_trial = interpolate_ca_data(dlc_trial, F_trial)
 
-    sd = np.nanstd(F_trial, axis=1).reshape(-1, 1)
-    dff_trial = (F_trial - sd)/sd
-    dff_trial = dff_trial - np.nanmean(dff_trial[:, :800], axis=1).reshape(-1, 1)
+    # sd = np.nanstd(F_trial, axis=1).reshape(-1, 1)
+    # dff_trial = (F_trial - sd)/sd
+    # dff_trial = dff_trial - np.nanmean(dff_trial[:, :800], axis=1).reshape(-1, 1)
 
     F_behavior.append(F_trial)
-    dff_behavior.append(dff_trial)
+    # dff_behavior.append(dff_trial)
     lt.append([int(k) for k in ltimes])
     rt.append([int(k) for k in rtimes])
 
@@ -135,9 +136,25 @@ for i, bm_name in tqdm(enumerate(behavior_movie_names)):
 
 trial_lengths = [F_behavior[i].shape[1] for i in range(len(F_behavior))]
 
-dff_behavior = np.hstack(dff_behavior)
-F_behavior = np.hstack(F_behavior)
-# dff_behavior = np.hstack(dff_behavior)
+F_behavior_s = np.hstack(F_behavior)
+#%%
+sd_list = np.nanstd(F_behavior_s, axis=1).reshape(-1, 1)
+dff_behavior = []
+for i, F_trial in enumerate(F_behavior):
+    dff_behavior.append((F_trial - sd_list)/sd_list)
+dff_behavior_s = np.hstack(dff_behavior)
+for i in range(5):
+    plt.plot(dff_behavior_s[i, :20000].T)
+    plt.show()
+
+baseline_sub = np.nanmean(dff_behavior_s[:, :1000], axis=1).reshape(-1, 1)
+for i, dff_trial in enumerate(dff_behavior):
+    dff_behavior[i] = dff_trial - baseline_sub
+dff_behavior_s = np.hstack(dff_behavior)
+for i in range(5):
+    plt.plot(dff_behavior_s[i, :20000].T)
+    plt.show()
+
 
 #%% 
 
@@ -197,8 +214,9 @@ def plot_licks(ttip, tmid, lport, trial):
     plt.scatter(lport[trial]["x"].index.values, lport[trial]["x"],  marker='.', alpha=0.1, c='green')
     plt.show()
     # plt.xlim([0, 500])
-plot_licks(ttip, tmid, lport, 1)
+plot_licks(ttip, tmid, lport, 2)
 
+#%%
 
 ctr=0
 lick_starts = []
@@ -207,17 +225,21 @@ for trial in range(len(ttip)):
     arr = ttip[trial].index.values
     if len(arr) == 0:
         continue
-    k = segment(arr, max=200)
-    tongue_start_end = np.array([k[i][0] for i in range(len(k))])
-    for i in range(tongue_start_end.shape[0]):
-        movement = lport[trial]["x"].loc[tongue_start_end[i] - 500: tongue_start_end[i] + 500].values
-        if np.mean(movement[500:]) < 300:
+    k = segment(arr, max=400)
+    tongue_start = np.array([k[i][0] for i in range(len(k))])
+    tongue_end = np.array([k[i][-1] for i in range(len(k))])
+
+    for i in range(tongue_start.shape[0]):
+        tongue_start_end = (tongue_start[i] + tongue_end[i])//2
+        movement = lport[trial]["x"].loc[tongue_start_end - 500: tongue_start_end + 500].values
+        if np.mean(movement[500:]) > 300:
             ignore = True
             continue
         if movement.shape[0] != 1001:
             continue
         
-        lick_starts.append(tongue_start_end[i])
+        # lick_starts.append(tongue_start_end)
+        lick_starts.append(tongue_start[i])
         ctr = ctr + 1
 
         # movement = (movement - np.mean(movement))/np.std(movement)
@@ -230,28 +252,104 @@ plt.plot(avg/ctr)
 cn = ca_data["cn"][0]
 print(ctr)
 #%%
-import matplotlib.colors as cl
+def find_nearest_above(my_array, target):
+    diff = my_array - target
+    mask = np.ma.less_equal(diff, 0)
+    # We need to mask the negative differences and zero
+    # since we are looking for values above
+    if np.all(mask):
+        return None # returns None if target is greater than any value
+    masked_diff = np.ma.masked_array(diff, mask)
+    return masked_diff.argmin()
+rtrel_dlc  = []
+def dlc_approx_reward_time(lport):
 
-dff_avg = np.zeros((dff_trial.shape[0], 1000, len(c_lengths)-2))
+    trials_ignore = []
+    for trial in range(len(lport)):
+        if lport[trial]["x"][500:].max() > 300 and len(rtrel[trial]) == 0:
+            # print(trial, rtrel[trial])
+            # plot_licks(ttip, tmid, lport, trial)
+            trials_ignore.append(trial)
+            rtrel_dlc.append([])
+            continue
+        
+        if len(rtrel[trial]) == 0:
+            rtrel_dlc.append([])
+            continue
+
+        if lport[trial]["x"][1000:].max() < 300 and len(rtrel[trial]) != 0:
+            rtrel_dlc.append([])
+            print(trial, rtrel[trial])
+
+        closest = 500+find_nearest_above(rollingfun(lport[trial]['x'][500:].values, 1000), 301)
+        print(closest, closest - rtrel[trial][0], lport[trial]['x'].iloc[closest], trial)
+        
+        rtrel_dlc.append([closest])
+
+dlc_approx_reward_time(lport)
+#%%
+
+### this code plots a actvity plot and some examples of when activity increased a lot after reward onset
+import matplotlib.colors as cl
+tframes = 2000
+ctr = 0
+dff_avg = np.zeros((dff_behavior_s.shape[0], tframes, len(c_lengths)-2))
 for tl in range(len(c_lengths)-2):
-    dff_trial = dff_behavior[:, c_lengths[tl]:c_lengths[tl+1]]
-    reward = rtrel[tl]
+    dff_trial = dff_behavior_s[:, c_lengths[tl]:c_lengths[tl+1]]
+    reward = rtrel_dlc[tl]
 
     if len(reward) == 0:
         print(f"No reward trial, {tl}")
         continue
     
-    k = dff_trial[:, (reward[0])-500: (reward[0])+500]
+    k = dff_trial[:, (reward[0])-tframes//2: (reward[0])+tframes//2]
+    print((reward[0])-tframes//2, (reward[0])+tframes//2)
     if k.shape[1] != dff_avg.shape[1]:
         print("Not found")
         continue
     dff_avg[:,:,tl] = k
+    ctr += 1
 
 dff_avg = np.mean(dff_avg, axis=-1)
-means = np.mean(dff_avg[:, 500:], axis=1)
-sorted_m = np.argsort(means)
-plt.imshow(dff_avg[sorted_m], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(0))
+means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
+sorted_m = np.argsort(means)[::-1]
+plt.imshow(dff_avg[sorted_m[:5]], aspect="auto", cmap='seismic')
 plt.colorbar()
+plt.show()
+
+#%%
+for i in range(5):
+    plt.plot(dff_avg[sorted_m[i]])
+    plt.title(sorted_m[i])
+    plt.show()
+
+# %%
+tframes = 2000
+ctr = 0
+dff_avg = np.zeros((dff_behavior_s.shape[0], tframes, len(lick_starts)))
+# for cell in range(dff_behavior_s.shape[0]):
+for tl, ls in enumerate(lick_starts):
+    k = dff_behavior_s[:, ls-tframes//2:ls+tframes//2]
+    if k.shape[1] != dff_avg.shape[1]:
+        print("Not found")
+        continue
+    dff_avg[:,:,tl] = k
+    ctr += 1
+
+dff_avg = np.mean(dff_avg, axis=-1)
+means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
+sorted_m = np.argsort(means)[::-1]
+plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic')
+plt.colorbar()
+plt.show()
+
+for i in range(20):
+    plt.plot(dff_avg[sorted_m[i]])
+    plt.title(sorted_m[i])
+    plt.show()
+
+plt.plot(dff_avg[cn])
+plt.title(cn)
 plt.show()
 
 # %%
