@@ -102,7 +102,7 @@ fovdeg = [np.min(fovdeg),np.max(fovdeg)]
 # ax_2 = fig.add_subplot(2,1,2)
 # ax_2.imshow(res_image_post)
 # =============================================================================
-#%%
+#%% xy intensities
 import matplotlib
 from  scipy.ndimage import gaussian_filter 
 matplotlib.rcParams.update({'font.size': 6})
@@ -283,3 +283,109 @@ fov = [291.5438778,
 plt.plot(mag,1/np.asarray(fov),'ko')
 mag = 1
 fov = 1/(mag*6.87150356e-04+ 2.15504336e-06)
+
+
+#%% Z-stack
+#%% look at the PSF of the SLM 
+from ScanImageTiffReader import ScanImageTiffReader
+import BCI_analysis
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+#stimfile = '/home/rozmar/Network/Bergamo2P/Imaging/Marton/photostim_slm_grid/grid_range_20_10steps_00001.stim'
+base_dir = '/mnt/Data/Calcium_imaging/raw/KayvonScope/tests/photostim_slm_grid_Z/'
+
+res_file = os.path.join(base_dir,'res_zstack_00001.tif')
+reader=ScanImageTiffReader(res_file)
+#%
+res_stack=reader.data().copy()
+#%
+#reader.close()
+#%
+
+metadata  = BCI_analysis.io_scanimage.extract_scanimage_metadata(res_file)
+
+fovdeg = list()
+for s in metadata['metadata']['hRoiManager']['imagingFovDeg'].strip('[]').split(' '): fovdeg.extend(s.split(';'))
+fovdeg = np.asarray(fovdeg,float)
+fovdeg = [np.min(fovdeg),np.max(fovdeg)]
+
+
+start_list = np.arange(0,901,100)
+end_list = np.arange(100,1001,100)
+slm_planes = []
+for z in range(50,155,10):
+    slm_planes.append('slm_{}_00001.tif'.format(str(z).zfill(3)))
+
+slm_traces = []
+slm_traces_small = []
+slm_mean_images = []
+for slm_plane in slm_planes:
+    print(slm_plane)
+    file = os.path.join(base_dir,slm_plane)
+    reader=ScanImageTiffReader(file)
+    movie=reader.data()
+    trace_slm = np.mean(np.mean(movie[:,:800,:],2),1)
+    baseline_slm = np.mean(np.mean(movie[:,800:,:],2),1)
+    trace_slm = trace_slm-np.median(baseline_slm)
+    slm_traces.append(trace_slm)
+    #%
+    traces_small_slm = []
+    for s,e in zip(start_list,end_list):
+        traces_small_slm.append(trace_slm[int(s):int(e)])
+        mean_vals_slm = np.mean(np.asarray(traces_small_slm),0).flatten()
+        
+        
+        
+        mean_img_slm = np.zeros([10,10])
+        mean_img_slm_comp = np.zeros([10,10])
+        idx = -1
+        #%
+        range_ = 20
+        step_num = 10
+        degree_steps = (np.arange(step_num)+1)/step_num*range_ - range_/2 #10*(np.arange(11)-5)/10
+        step_size =np.mean(np.diff(degree_steps))
+        FOV_fraction_positions = (degree_steps-fovdeg[0])/np.diff(fovdeg)[0]
+        zoomfactor = float(metadata['metadata']['hRoiManager']['scanZoomFactor'])
+        FOV_size = 1/(zoomfactor*6.87150356e-04+ 2.15504336e-06) # in microns
+        microns_per_fovdeg = FOV_size/np.diff(fovdeg)[0]#(np.max(degree_steps)-np.min(degree_steps))#
+        #%%
+        center = [4,4]
+        distances = []
+        #%
+        
+        for x in range(10):
+            for y in range(10):
+                idx+=1
+                if [x,y] == center:
+                    center_idx = idx
+                mean_img_slm[x,y] = mean_vals_slm[idx]
+                distances.append(step_size*np.sqrt((x-center[0])**2+(y-center[1])**2))
+                if FOV_fraction_positions[x] == FOV_fraction_positions[y] ==.5:
+                    marker = 'ro'
+                else:
+                    marker = 'r.'
+    slm_mean_images.append(mean_img_slm)
+        
+        
+    slm_traces_small.append(traces_small_slm)
+#%%
+slm_matrix = np.asarray(slm_mean_images)
+slm_matrix_norm = slm_matrix/np.max(slm_matrix,0)
+z_profiles = []
+for distance in np.unique(distances):
+    xs,ys = np.unravel_index(np.where(distance == distances)[0],np.shape(slm_matrix_norm[5,:,:].squeeze()))
+    profiles_list = []
+    for x,y in zip(xs,ys):
+        profiles_list.append(slm_matrix_norm[:,x,y].squeeze())
+    z_profiles.append(np.mean(profiles_list,0))
+        
+fig = plt.figure()
+ax=fig.add_subplot(1,1,1)    
+res_z = np.mean(np.mean(res_stack,1),1)
+for distance,z_profile in zip(np.unique(distances),z_profiles):
+    ax.plot(np.arange(-50,55,10),z_profile)
+
+ax.plot(np.arange(-50,55,10),(res_z-np.min(res_z))/(np.max(res_z)-np.min(res_z)),'k-')  
+ax.set_xlabel('Z position (microns)')
+ax.set_ylabel('relative intensity')
