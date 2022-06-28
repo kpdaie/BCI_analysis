@@ -26,7 +26,7 @@ plt_save_path = os.path.abspath("../../Plots/")
 mouse = "BCI_26"
 FOV = "FOV_04"
 camera = "side" 
-session = "041022"
+session = "041522"
 
 def interpolate_ca_data(dlc_trial, F_trial, plot=False):
     x = np.linspace(0, dlc_trial.shape[0], F_trial.shape[1])
@@ -147,13 +147,13 @@ for i in range(5):
     plt.plot(dff_behavior_s[i, :20000].T)
     plt.show()
 
-baseline_sub = np.nanmean(dff_behavior_s[:, :1000], axis=1).reshape(-1, 1)
-for i, dff_trial in enumerate(dff_behavior):
-    dff_behavior[i] = dff_trial - baseline_sub
-dff_behavior_s = np.hstack(dff_behavior)
-for i in range(5):
-    plt.plot(dff_behavior_s[i, :20000].T)
-    plt.show()
+# baseline_sub = np.nanmean(dff_behavior_s[:, :1000], axis=1).reshape(-1, 1)
+# for i, dff_trial in enumerate(dff_behavior):
+#     dff_behavior[i] = dff_trial - baseline_sub
+# dff_behavior_s = np.hstack(dff_behavior)
+# for i in range(5):
+#     plt.plot(dff_behavior_s[i, :20000].T)
+#     plt.show()
 
 
 #%% 
@@ -317,11 +317,13 @@ plt.imshow(dff_avg[sorted_m[:5]], aspect="auto", cmap='seismic')
 plt.colorbar()
 plt.show()
 
-#%%
 for i in range(5):
     plt.plot(dff_avg[sorted_m[i]])
     plt.title(sorted_m[i])
     plt.show()
+plt.plot(dff_avg[cn])
+plt.title(cn)
+plt.show()
 
 # %%
 tframes = 2000
@@ -337,19 +339,30 @@ for tl, ls in enumerate(lick_starts):
     ctr += 1
 
 dff_avg = np.mean(dff_avg, axis=-1)
+dff_avg = dff_avg - np.mean(dff_avg[:, :200], axis=1).reshape(-1,1)
+
+#%% 
+
 means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
+# means = np.mean(dff_avg[:, tframes//2:], axis=1) - np.mean(dff_avg[:, :tframes//2], axis=1)
 sorted_m = np.argsort(means)[::-1]
-plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic')
+cn_sorted = np.argwhere(sorted_m == cn)
+
+plt.figure(figsize=(10, 4))
+plt.subplot(121)
+plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(0))
+plt.axvline(x=tframes//2, color='black')
+plt.yticks(cn_sorted[0], [f'{cn}: CN'])
+plt.title(f'{mouse}-{session}')
 plt.colorbar()
-plt.show()
-
-for i in range(20):
-    plt.plot(dff_avg[sorted_m[i]])
-    plt.title(sorted_m[i])
-    plt.show()
-
+# for i in range(2):
+#     plt.plot(dff_avg[sorted_m[i]])
+#     plt.title(sorted_m[i])
+#     plt.show()
+plt.subplot(122)
 plt.plot(dff_avg[cn])
-plt.title(cn)
+plt.title(f"{cn}: Conditioned Neuron")
+plt.axvline(x=1000, ymin=0.25, ymax=0.75, color='black', linestyle='--')
 plt.show()
 
 # %%
