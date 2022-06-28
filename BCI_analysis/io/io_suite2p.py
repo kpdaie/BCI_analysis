@@ -118,7 +118,12 @@ def suite2p_to_npy(suite2p_path,
                                                                                                  os.path.join(session_path, "ops.npy"), 
                                                                                                  os.path.join(fov_path, "stat.npy"), 
                                                                                                  plot=False)
-                    closed_loop_filenames = [k[0] for k in np.asarray(_scanimage_filenames)[_closed_loop_trial]]
+                    try:
+                        clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
+                    except:
+                        clt = []
+                    closed_loop_filenames = [k for k in filelist['file_name_list'] if k.lower().startswith("neuron") or k in clt] # TODO, we should pull out this information from the scanimage tiff header
+                    #closed_loop_filenames = [k[0] for k in np.asarray(_scanimage_filenames)[_closed_loop_trial] if k[0].lower().startswith("neuron")]
 
                     frame_num = np.asarray(filelist['frame_num_list'])
                     filename_start_frame = np.asarray([0] + np.cumsum(frame_num).tolist())
