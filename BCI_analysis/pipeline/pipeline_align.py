@@ -7,8 +7,6 @@ import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
 
-from BCI_analysis.plot.plot_behavior import F_aligned
-
 def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge'):
     pad_width = target_length - dlc_data.shape[0]%target_length
     mean_window = (dlc_data.shape[0] + pad_width)//target_length
@@ -104,7 +102,7 @@ def get_aligned_data(suite2p_path,
     cl_trial_list = [filelist['file_name_list'][i] for i in range(len(filelist['frame_num_list'])) if filelist['file_name_list'][i].startswith("neuron")]
     print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
 
-    F_behavior = []
+    F_aligned = []
     lt = []
     rt = []
     tt = []
@@ -141,23 +139,38 @@ def get_aligned_data(suite2p_path,
         F_trial = F[:, int(frame_times_rel0[0]*fs):int(frame_times_rel0[-1]*fs)]
 
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
-        dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0).drop('likelihood', level=1, axis=1)
+        dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
         # dlc_trial = collapse_dlc_data(dlc_trial, F_trial.shape[1], mode='edge')
         dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
 
         F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
-        F_behavior.append(F_trial)
-        lt.append(lick_times[i])
-        rt.append(reward_times[i])
+        F_aligned.append(F_trial)
+        lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
+        rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
         tt.append(trial_times[i])
 
-    # F_behavior = np.hstack(F_behavior)
+    F_aligned_s = np.hstack(F_aligned)
+
+    ## dff = (F-sd)/sd
+    sd_list = np.nanstd(F_aligned_s, axis=1).reshape(-1, 1)
+    dff_aligned = []
+    for i, F_trial in enumerate(F_aligned):
+        dff_aligned.append((F_trial - sd_list)/sd_list)
+    dff_aligned_s = np.hstack(dff_aligned)
+
+    # baseline subtraction: dff = dff - dff[:1000]
+    baseline_sub = np.nanmean(dff_aligned_s[:, :1000], axis=1).reshape(-1, 1)
+    for i, dff_trial in enumerate(dff_aligned):
+        dff_aligned[i] = dff_trial - baseline_sub
+
     dict_return = {
-            "F_aligned": F_behavior,
-            "DLC_aligned": dlc_data,
+            "F_aligned": F_aligned,
+            "DLC_aligned": dlc_data.to_dict(),
+            "dff_aligned": dff_aligned,
             "lick_times_aligned": lt,
             "reward_times_aligned": rt,
             "trial_times_aligned": tt,
+            "cn": ca_data["cn"][0]
             } 
     return dict_return
 
@@ -237,3 +250,5 @@ def align_licks(suite2p_path,
     for i in range(len(lt)):
         plt.plot(lt[i], i, 'o')
         plt.plot(lt[i], i, 'o')
+
+# %%
