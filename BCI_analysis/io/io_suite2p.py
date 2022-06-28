@@ -134,16 +134,20 @@ def suite2p_to_npy(suite2p_path,
                         
                         if end_frame - start_frame > frames_this_trial:
                             end_frame = start_frame + frames_this_trial
-                        if i != 0: #TODO this way the first trial is not aligned to the rest of the trials
-                            start_frame = start_frame - frames_prev_trial # taking 40 time points before trial starts
+                        start_frame = start_frame - frames_prev_trial # taking 40 time points before trial starts
+                        if start_frame<0: # taking care of edge at the beginning
+                            missing_frames_at_beginning = np.abs(start_frame)
+                            start_frame = 0
+                        else:
+                            missing_frames_at_beginning = 0
                             
                         if filename in closed_loop_filenames:
-                            F_trialwise_closed_loop[:end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
-                            dff_trialwise_closed_loop[:end_frame-start_frame, :, counter] = dff[:, start_frame:end_frame].T
+                            F_trialwise_closed_loop[missing_frames_at_beginning:end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+                            dff_trialwise_closed_loop[missing_frames_at_beginning:end_frame-start_frame, :, counter] = dff[:, start_frame:end_frame].T
                             counter += 1
                             
-                        F_trialwise_all[:end_frame-start_frame, :, i] = F[:, start_frame:end_frame].T
-                        dff_trialwise_all[:end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
+                        F_trialwise_all[missing_frames_at_beginning:end_frame-start_frame, :, i] = F[:, start_frame:end_frame].T
+                        dff_trialwise_all[missing_frames_at_beginning:end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
                                                 
                     
                     # print(f"cn idx: {np.unique(cn_idx)}")
