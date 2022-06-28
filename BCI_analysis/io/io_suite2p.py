@@ -111,7 +111,13 @@ def suite2p_to_npy(suite2p_path,
                         filelist = json.load(json_file)   
                     
                     all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
-                    closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.lower().startswith("neuron")] # TODO, we should pull out this information from the scanimage tiff header
+                    #closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.lower().startswith("neuron")] # TODO, we should pull out this information from the scanimage tiff header
+                    behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
+                    cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
+                                                                                                 os.path.join(session_path, "ops.npy"), 
+                                                                                                 os.path.join(fov_path, "stat.npy"), 
+                                                                                                 plot=False)
+                    closed_loop_filenames = np.asarray(_scanimage_filenames)[_closed_loop_trial]
 
                     frame_num = np.asarray(filelist['frame_num_list'])
                     filename_start_frame = np.asarray([0] + np.cumsum(frame_num).tolist())
@@ -139,11 +145,7 @@ def suite2p_to_npy(suite2p_path,
                         F_trialwise_all[:end_frame-start_frame, :, i] = F[:, start_frame:end_frame].T
                         dff_trialwise_all[:end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
                                                 
-                    behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
-                    cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
-                                                                                                 os.path.join(session_path, "ops.npy"), 
-                                                                                                 os.path.join(fov_path, "stat.npy"), 
-                                                                                                 plot=True)
+                    
                     # print(f"cn idx: {np.unique(cn_idx)}")
                     roi_centers = [(stat[i]['xpix'].mean(), stat[i]['ypix'].mean()) for i in range(len(stat))]
                     roi_centers = np.asarray(roi_centers)
