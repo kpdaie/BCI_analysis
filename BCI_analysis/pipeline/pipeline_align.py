@@ -141,6 +141,8 @@ def get_aligned_data(suite2p_path,
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
         # dlc_trial = collapse_dlc_data(dlc_trial, F_trial.shape[1], mode='edge')
+        if dlc_trial.shape[0] < 100:
+            continue
         dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
 
         F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
@@ -149,6 +151,9 @@ def get_aligned_data(suite2p_path,
         rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
         tt.append(trial_times[i])
 
+    if len(F_aligned) == 0:
+        print(f"No data found, session {session}")
+        return None
     F_aligned_s = np.hstack(F_aligned)
 
     ## dff = (F-sd)/sd
@@ -163,6 +168,11 @@ def get_aligned_data(suite2p_path,
     for i, dff_trial in enumerate(dff_aligned):
         dff_aligned[i] = dff_trial - baseline_sub
 
+    cn = ca_data["cn"][0]
+    if cn is None:
+        print(f"{session}: CN is None, assigning value 0")
+        cn = 0
+
     dict_return = {
             "F_aligned": F_aligned,
             "DLC_aligned": dlc_data.to_dict(),
@@ -170,7 +180,7 @@ def get_aligned_data(suite2p_path,
             "lick_times_aligned": lt,
             "reward_times_aligned": rt,
             "trial_times_aligned": tt,
-            "cn": ca_data["cn"][0]
+            "cn": cn
             } 
     return dict_return
 

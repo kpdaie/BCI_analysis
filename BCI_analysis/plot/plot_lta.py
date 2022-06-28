@@ -5,6 +5,7 @@ import matplotlib.colors as cl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+sys.path.append("/home/labadmin/Github/BCI_analysis/BCI_analysis")
 from pipeline.pipeline_align import get_aligned_data
 from tqdm import tqdm
 
@@ -89,9 +90,15 @@ def dlc_approx_reward_time(lport, rt):
             rtrel_dlc.append([])
             print(trial, rt[trial])
 
-        closest = 500+find_nearest_above(rollingfun(lport[trial]['x'][500:].values, 1000), 301)
+        nearest = find_nearest_above(rollingfun(lport[trial]['x'][500:].values, 1000), 301)
+        if nearest is None:
+            rtrel_dlc.append([])
+
+        else:
+            closest = 500 + nearest
+            rtrel_dlc.append([closest])
+
         # print(closest, closest - rt[trial][0], lport[trial]['x'].iloc[closest], trial)
-        rtrel_dlc.append([closest])
 
     return rtrel_dlc
 
@@ -103,7 +110,8 @@ def plot_population_lta(suite2p_path,
                         mouse="BCI_26",
                         FOV="FOV_04",
                         camera="side",
-                        session="041022"):
+                        session="041022",
+                        plot=True):
     """
     This function plots and saves the plot to lick triggered population average. We take population
     activity nearby licks throughout the session and then average over the licks. We then plot a
@@ -125,6 +133,8 @@ def plot_population_lta(suite2p_path,
     """
 
     dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, mouse, FOV, camera, session, plot=False)
+    if dict_aligned is None:
+        return
     F_aligned = dict_aligned["F_aligned"]
     dff_aligned = dict_aligned["dff_aligned"]
 
@@ -188,24 +198,56 @@ def plot_population_lta(suite2p_path,
     sorted_m = np.argsort(means)[::-1]
     cn_sorted = np.argwhere(sorted_m == cn)
 
-    plt.figure(figsize=(16, 8))
-    plt.subplot(121)
-    plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(0))
-    plt.axvline(x=tframes//2, color='black')
-    plt.yticks(cn_sorted[0], [f'{cn}: CN'])
-    plt.title(f'{mouse}-{session}')
-    plt.colorbar()
+    if plot == True:
+        plt.figure(figsize=(16, 8))
+        plt.subplot(121)
+        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(0))
+        plt.axvline(x=tframes//2, color='black')
+        plt.yticks(cn_sorted[0], [f'{cn}: CN'])
+        plt.title(f'{mouse}-{session}')
+        plt.colorbar()
 
-    plt.subplot(122)
-    plt.plot(dff_avg[cn])
-    plt.title(f"{cn}: Conditioned Neuron")
-    plt.axvline(x=1000, ymin=0.25, ymax=0.75, color='black', linestyle='--')
+        plt.subplot(122)
+        plt.plot(dff_avg[cn])
+        plt.title(f"{cn}: Conditioned Neuron")
+        plt.axvline(x=1000, ymin=0.25, ymax=0.75, color='black', linestyle='--')
 
-    os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
-    save_path = os.path.join(plt_save_path, mouse, f"lick_triggered_population-{session}")
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.show(block=False)
+        os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
+        save_path = os.path.join(plt_save_path, mouse, f"lick_triggered_population-{session}")
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.show(block=False)
+    
+    return dff_avg, sorted_m
 
+def plot_sessionwise_change(suite2p_path,
+                            dlc_base_dir,
+                            bpod_path,
+                            sessionwise_data_path,
+                            plt_save_path,
+                            mouse="BCI_26",
+                            FOV="FOV_04",
+                            camera="side",
+                            session_list=["041022", "041122"]):
+    
+    delta_change = []
+    for session in session_list:
+        dff_avg, sorted_m = plot_population_lta(suite2p_path, dlc_base_dir, 
+                            bpod_path, sessionwise_data_path, 
+                            plt_save_path, mouse, FOV, camera, session, plot=False)
+
+        tframes = 2000
+        print(dff_avg.shape)
+        print(tframes//2)
+        means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
+        print(means)
+        delta_change.append(means)
+        print(session)
+    
+
+    plt.scatter(delta_change[0], delta_change[1], marker='.', alpha=0.4, c='black')
+    plt.xlabel(f'{session_list[0]}')
+    plt.ylabel(f'{session_list[1]}')
+    plt.show()
 
 # %%
