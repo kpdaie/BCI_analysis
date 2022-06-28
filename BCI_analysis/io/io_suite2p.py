@@ -118,7 +118,7 @@ def suite2p_to_npy(suite2p_path,
                                                                                                  os.path.join(session_path, "ops.npy"), 
                                                                                                  os.path.join(fov_path, "stat.npy"), 
                                                                                                  plot=False)
-                    closed_loop_filenames = np.asarray(_scanimage_filenames)[_closed_loop_trial]
+                    closed_loop_filenames = [k[0] for k in np.asarray(_scanimage_filenames)[_closed_loop_trial]]
 
                     frame_num = np.asarray(filelist['frame_num_list'])
                     filename_start_frame = np.asarray([0] + np.cumsum(frame_num).tolist())
