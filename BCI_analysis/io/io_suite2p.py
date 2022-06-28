@@ -110,8 +110,9 @@ def suite2p_to_npy(suite2p_path,
                     with open(os.path.join(session_path, "filelist.json")) as json_file:
                         filelist = json.load(json_file)   
                     
-                    all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
+                    #all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
                     #closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.lower().startswith("neuron")] # TODO, we should pull out this information from the scanimage tiff header
+                    all_si_filenames = filelist['file_name_list']
                     behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
                     cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
                                                                                                  os.path.join(session_path, "ops.npy"), 
