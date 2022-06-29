@@ -5,6 +5,7 @@ import matplotlib.colors as cl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import sys
 sys.path.append("/home/labadmin/Github/BCI_analysis/BCI_analysis")
 from pipeline.pipeline_align import get_aligned_data
 from tqdm import tqdm
@@ -107,6 +108,7 @@ def plot_population_lta(suite2p_path,
                         bpod_path,
                         sessionwise_data_path,
                         plt_save_path,
+                        aligned_data_path,
                         mouse="BCI_26",
                         FOV="FOV_04",
                         camera="side",
@@ -123,6 +125,7 @@ def plot_population_lta(suite2p_path,
     suite2p_path = os.path.abspath("../../bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
     sessionwise_data_path = os.path.abspath("../../bucket/Data/Calcium_imaging/sessionwise_tba/")
     plt_save_path = os.path.abspath("../../Plots/")
+    aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_aligned")
 
     mouse = "BCI_26"
     FOV = "FOV_04"
@@ -132,14 +135,17 @@ def plot_population_lta(suite2p_path,
                         plt_save_path, mouse, FOV, camera, session)
     """
 
-    dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, mouse, FOV, camera, session, plot=False)
+    dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
+            sessionwise_data_path, aligned_data_path, mouse, 
+            FOV, camera, session, plot=False, overwrite=False)
+
     if dict_aligned is None:
         return
     F_aligned = dict_aligned["F_aligned"]
     dff_aligned = dict_aligned["dff_aligned"]
 
     rt = dict_aligned["reward_times_aligned"]
-    F_aligned_s = np.hstack(F_aligned)
+    # F_aligned_s = np.hstack(F_aligned)
     dff_aligned_s = np.hstack(dff_aligned)
     DLC_aligned = pd.DataFrame.from_dict(dict_aligned["DLC_aligned"])
     trial_lengths = [F_aligned[i].shape[1] for i in range(len(F_aligned))]
@@ -170,7 +176,7 @@ def plot_population_lta(suite2p_path,
         for i in range(tongue_start.shape[0]):
             tongue_start_end = (tongue_start[i] + tongue_end[i])//2
             movement = lport[trial]["x"].loc[tongue_start_end - 500: tongue_start_end + 500].values
-            if np.mean(movement[500:]) > 300:
+            if np.mean(movement[:500]) > 300:
                 continue
 
             lick_starts.append(tongue_start[i])
@@ -182,6 +188,7 @@ def plot_population_lta(suite2p_path,
     tframes = 2000
     ctr = 0
     dff_avg = np.zeros((dff_aligned_s.shape[0], tframes, len(lick_starts)))
+    print(len(lick_starts))
     for tl, ls in enumerate(lick_starts):
         k = dff_aligned_s[:, ls-tframes//2:ls+tframes//2]
         if k.shape[1] != dff_avg.shape[1]:
@@ -191,7 +198,7 @@ def plot_population_lta(suite2p_path,
         ctr += 1
 
     dff_avg = np.mean(dff_avg, axis=-1)
-    dff_avg = dff_avg - np.mean(dff_avg[:, :200], axis=1).reshape(-1,1)
+    dff_avg = dff_avg - np.mean(dff_avg[:, :1000], axis=1).reshape(-1,1)
 
     means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
     # means = np.mean(dff_avg[:, tframes//2:], axis=1) - np.mean(dff_avg[:, :tframes//2], axis=1)
@@ -216,7 +223,7 @@ def plot_population_lta(suite2p_path,
         save_path = os.path.join(plt_save_path, mouse, f"lick_triggered_population-{session}")
         plt.tight_layout()
         plt.savefig(save_path)
-        plt.show(block=False)
+        # plt.show(block=False)
     
     return dff_avg, sorted_m
 
@@ -225,29 +232,76 @@ def plot_sessionwise_change(suite2p_path,
                             bpod_path,
                             sessionwise_data_path,
                             plt_save_path,
+                            aligned_data_path,
                             mouse="BCI_26",
                             FOV="FOV_04",
                             camera="side",
                             session_list=["041022", "041122"]):
     
     delta_change = []
+    dffs = []
+    sorts = []
     for session in session_list:
         dff_avg, sorted_m = plot_population_lta(suite2p_path, dlc_base_dir, 
-                            bpod_path, sessionwise_data_path, 
-                            plt_save_path, mouse, FOV, camera, session, plot=False)
-
-        tframes = 2000
+                            bpod_path, sessionwise_data_path, plt_save_path, 
+                            aligned_data_path, mouse, FOV, camera, session, plot=False)
+        
         print(dff_avg.shape)
-        print(tframes//2)
-        means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
-        print(means)
-        delta_change.append(means)
+        dffs.append(dff_avg)
+        sorts.append(sorted_m)
         print(session)
-    
 
-    plt.scatter(delta_change[0], delta_change[1], marker='.', alpha=0.4, c='black')
-    plt.xlabel(f'{session_list[0]}')
-    plt.ylabel(f'{session_list[1]}')
-    plt.show()
+    tframes = 2000
+    means = [np.sum(k, axis=1) for k in dffs]
+
+    # print(np.mean(delta_change[0]), np.mean(delta_change[1]))
+    # plt.scatter(delta_change[0], delta_change[1], marker='.', alpha=0.4, c='black')
+    # plt.scatter(np.mean(delta_change[0]), np.mean(delta_change[1]), c='red', marker='.')
+    # plt.xlabel(f'{session_list[0]}')
+    # plt.ylabel(f'{session_list[1]}')
+    # plt.show()
+
+    plt.figure(figsize=(16, 8))
+    plt.subplot(121)
+    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-1, vmax=1))
+    plt.axvline(x=tframes//2, color='black')
+    # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
+    plt.title(f'{mouse}-{session_list[0]}')
+    plt.colorbar()
+
+    plt.subplot(122)
+    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-1, vmax=1))
+    plt.axvline(x=tframes//2, color='black')
+    # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
+    plt.title(f'{mouse}-{session_list[1]}')
+    plt.colorbar()
+
+    os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
+    save_path = os.path.join(plt_save_path, mouse, f"{session_list[0]}-{session_list[1]}-heatmap")
+    plt.tight_layout()
+    plt.savefig(save_path)
+
 
 # %%
+
+dlc_base_dir = os.path.abspath("../../bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
+bpod_path = os.path.abspath("../../bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
+suite2p_path = os.path.abspath("../../bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
+sessionwise_data_path = os.path.abspath("../../bucket/Data/Calcium_imaging/sessionwise_tba/")
+plt_save_path = os.path.abspath("../../Plots/")
+aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_aligned")
+
+
+mouse = "BCI_26"
+FOV = "FOV_04"
+camera = "side" 
+session_list = ["041322", "041322_2"]
+
+# for session in session_list:
+#     plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
+#                         plt_save_path, aligned_data_path, mouse, FOV, camera, session)
+
+plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+
+session_list = ["041422", "041522"]
+plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)

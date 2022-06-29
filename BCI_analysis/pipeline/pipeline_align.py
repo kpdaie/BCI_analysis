@@ -1,4 +1,5 @@
 #%%
+from asyncore import file_wrapper
 import os
 import json
 import numpy as np
@@ -40,11 +41,13 @@ def get_aligned_data(suite2p_path,
                      dlc_base_dir,
                      bpod_path,
                      sessionwise_data_path,
+                     aligned_data_path,
                      mouse = "BCI_26",
                      FOV = "FOV_04",
                      camera = "side",
                      session = "041022",
-                     plot=False):
+                     plot=False,
+                     overwrite=False):
     """
     This script returns aligned F (raw flouroscence trace) and DLC data. 
     a. If there are multiple movie files a trial they are thrown out. 
@@ -76,17 +79,36 @@ def get_aligned_data(suite2p_path,
     bpod_path = os.path.abspath("bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
     suite2p_path = os.path.abspath("bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
     sessionwise_data_path = os.path.abspath("bucket/Data/Calcium_imaging/sessionwise_tba/")
-    mouse = "BCI_26",
-    FOV = "FOV_04",
-    camera = "side",
+    mouse = "BCI_26"
+    FOV = "FOV_04"
+    camera = "side"
     session = "041022"
     F_aligned, DLC_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
                                     sessionwise_data_path, mouse, FOV, camera, session)
     """
+    os.makedirs(os.path.join(aligned_data_path, mouse), exist_ok=True)
+    dict_save_path = os.path.join(aligned_data_path, mouse, f"{session}-dict_aligned.npy")
+    if os.path.isfile(dict_save_path) and (overwrite == False):
+        dict_return = np.load(dict_save_path, allow_pickle=True).tolist()
+        print(f"File found at {dict_save_path}")
+        return dict_return
 
+    print(f"Aligned data not found at {dict_save_path}, saving")
     bpod_filepath = os.path.join(bpod_path, mouse, session+"-bpod_zaber.npy")
     bpod_data = np.load(bpod_filepath, allow_pickle=True).tolist()
-    behavior_movie_names = bpod_data['behavior_movie_name_list'][:-1]
+
+    behavior_movie_names = bpod_data['behavior_movie_name_list']
+    print(behavior_movie_names)
+    print(bpod_data['scanimage_file_names'])
+    files_with_movies = []
+    for i, k in enumerate(bpod_data['scanimage_file_names']):
+        print(k)
+        if str(k) == 'no movie for this trial':
+            files_with_movies.append(False)
+        else:
+            files_with_movies.append(True)                        
+    behavior_movie_names = behavior_movie_names[files_with_movies]
+
     trial_start_times = bpod_data['trial_start_times']
 
     ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
@@ -141,7 +163,8 @@ def get_aligned_data(suite2p_path,
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
         # dlc_trial = collapse_dlc_data(dlc_trial, F_trial.shape[1], mode='edge')
-        if dlc_trial.shape[0] < 100:
+        if dlc_trial.shape[0] == 0 or F_trial.shape[1] == 0:
+            print(dlc_trial.shape, F_trial.shape)
             continue
         dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
 
@@ -182,6 +205,7 @@ def get_aligned_data(suite2p_path,
             "trial_times_aligned": tt,
             "cn": cn
             } 
+    np.save(dict_save_path, dict_return)
     return dict_return
 
 
