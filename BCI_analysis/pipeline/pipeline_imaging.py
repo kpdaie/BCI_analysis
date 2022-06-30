@@ -79,8 +79,8 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         conditioned_neuron_name_list.append(conditioned_neuron_name)
         roi_indices.append(roi_idx)
 
-    x_offset = -1*np.median(ops['xoff_list'][:100])
-    y_offset  =-1*np.median(ops['yoff_list'][:100])
+    x_offset = np.median(ops['xoff_list'][:100])
+    y_offset  =np.median(ops['yoff_list'][:100])
     fovdeg = list()
     for s in metadata['metadata']['hRoiManager']['imagingFovDeg'].strip('[]').split(' '): fovdeg.extend(s.split(';'))
     fovdeg = np.asarray(fovdeg,float)
@@ -138,7 +138,7 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         dist_list = list()
         for cell_stat in stat:
             
-            dist = np.sqrt((centerXY_list[roi_idx_now-1][0]*Lx-x_offset-cell_stat['med'][1])**2+(centerXY_list[roi_idx_now-1][1]*Lx-y_offset-cell_stat['med'][0])**2) - cell_stat['radius']
+            dist = np.sqrt((centerXY_list[roi_idx_now-1][0]*Lx-x_offset-cell_stat['med'][1])**2+(centerXY_list[roi_idx_now-1][1]*Lx-y_offset-cell_stat['med'][0])**2)# - cell_stat['radius']
             dist_list.append(dist)
             med_list.append(cell_stat['med'])
             #break
