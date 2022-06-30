@@ -214,6 +214,7 @@ def suite2p_to_npy(suite2p_path,
                                 'zaber_move_forward': bpod_zaber_data['zaber_move_forward'][files_with_movies],
                                 'sampling_rate': fs,
                                 'all_si_filenames': all_si_filenames,
+                                'all_si_frame_nums':frame_num,
                                 'closed_loop_filenames': closed_loop_filenames,
                             }
                     #%%
