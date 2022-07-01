@@ -56,6 +56,8 @@ def suite2p_to_npy(suite2p_path,
     save_path = "/home/jupyter/bucket/Data/Calcium_imaging/sessionwise_tba"
     suite2p_to_npy(suite2p_path, raw_data_path, behavior_data_path, save_path, overwrite=True, mice_name = mice_name)
     """
+    #%%
+    adjust_channel_offsets = False
     frames_this_trial = max_frames - frames_prev_trial
     if mice_name is None:
         mice_name = os.listdir(suite2p_path)
@@ -76,11 +78,11 @@ def suite2p_to_npy(suite2p_path,
         for fov in fov_list:
             fov_path = os.path.join(suite2p_data, fov)
             try:
-                mean_image = np.load(os.path.join(fov_path, "mean_image.npy"))
+                mean_image = np.load(os.path.join(fov_path, "mean_image.npy")) #TODO the mean image should come from the session and not from the FOV
             except OSError as e:
                 print(f"Files Not present for this {fov}, skipping")
                 continue
-            max_image = np.load(os.path.join(fov_path, "max_image.npy"))
+            max_image = np.load(os.path.join(fov_path, "max_image.npy"))#TODO the max image should come from the session and not from the FOV
             stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
 
             if session_list is None:
@@ -104,14 +106,19 @@ def suite2p_to_npy(suite2p_path,
                     
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+                    photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
+                    f0_scalar = np.mean(np.load(os.path.join(session_path,'F0.npy')),1)                    
                     
+                    if adjust_channel_offsets: # this is optional, might not be important
+                        channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
+                        F+= channel_offset_dict['channel_offset']
+                        F0+=channel_offset_dict['channel_offset']                    
                     dff = (F-F0)/F0
 
                     with open(os.path.join(session_path, "filelist.json")) as json_file:
                         filelist = json.load(json_file)   
                     
-                    #all_si_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list']]
-                    #closed_loop_filenames = [os.path.join(raw_suite2p, session_date, k) for k in filelist['file_name_list'] if k.lower().startswith("neuron")] # TODO, we should pull out this information from the scanimage tiff header
+                    
                     all_si_filenames = filelist['file_name_list']
                     behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
                     cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
@@ -181,7 +188,7 @@ def suite2p_to_npy(suite2p_path,
                         lick_L = bpod_zaber_data['lick_L'][files_with_movies]
 
                         threshold_crossing_times = bpod_zaber_data['threshold_crossing_times'][files_with_movies]
-                
+
                 
                     dict_all = {'F_sessionwise': F,
                                 'F_trialwise_all': F_trialwise_all,
@@ -210,7 +217,11 @@ def suite2p_to_npy(suite2p_path,
                                 'zaber_move_forward': bpod_zaber_data['zaber_move_forward'][files_with_movies],
                                 'sampling_rate': fs,
                                 'all_si_filenames': all_si_filenames,
+                                'all_si_frame_nums':frame_num,
                                 'closed_loop_filenames': closed_loop_filenames,
+                                'photon_counts' :photon_counts_dict,
+                                'f0_scalar':f0_scalar
                             }
+                    #%%
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
