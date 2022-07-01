@@ -49,6 +49,7 @@ def plot_lick_lickport(ttip, lport, trial):
     """
     This function plots tongue position, the segmented licks and the lickport steps
     """
+
     k = segment(ttip[trial].index.values, max=200)
     tongue_start_end = np.array([[k[i][0], k[i][-1]] for i in range(len(k))])
 
@@ -71,20 +72,37 @@ def find_nearest_above(my_array, target):
     masked_diff = np.ma.masked_array(diff, mask)
     return masked_diff.argmin()
 
+def get_bpod_reward_times_aligned(lport, rt):
+
+    rtrel_dlc  = []
+    frame_since_start = 0
+    for trial in range(len(lport)):
+        if len(rt[trial]) == 0:
+            rtrel_dlc.append([])
+            continue
+        closest = frame_since_start + int(rt[trial][0])
+        rtrel_dlc.append([closest])
+        frame_since_start += lport[trial].shape[0]
+
+    return rtrel_dlc
+
 def dlc_approx_reward_time(lport, rt):
     """
     This function tries to estimate reward time using lickport position. Just for sanity checks
     """
     trials_ignore = []
     rtrel_dlc  = []
+    frame_since_start = 0
     for trial in range(len(lport)):
         if lport[trial]["x"][500:].max() > 300 and len(rt[trial]) == 0:
             trials_ignore.append(trial)
             rtrel_dlc.append([])
+            frame_since_start += lport[trial].shape[0]
             continue
         
         if len(rt[trial]) == 0:
             rtrel_dlc.append([])
+            frame_since_start += lport[trial].shape[0]
             continue
 
         if lport[trial]["x"][1000:].max() < 300 and len(rt[trial]) != 0:
@@ -96,12 +114,25 @@ def dlc_approx_reward_time(lport, rt):
             rtrel_dlc.append([])
 
         else:
-            closest = 500 + nearest
+            closest = frame_since_start + 500 + nearest
             rtrel_dlc.append([closest])
+
+        frame_since_start += lport[trial].shape[0]
+
 
         # print(closest, closest - rt[trial][0], lport[trial]['x'].iloc[closest], trial)
 
     return rtrel_dlc
+
+def plot_trace(dff_mean, dff_sd, indices=None, dim=(2,4)):
+
+    fig = plt.figure(figsize=tuple(i * 4 for i in dim)[::-1])
+    for i, id in enumerate(indices):
+        ax = plt.subplot(*dim, i + 1)
+        ax.plot(dff_mean[id])
+        ax.fill_between(np.arange(len(dff_mean[id])), dff_mean[id]-dff_sd[id], dff_mean[id]+dff_sd[id], alpha=0.2)
+    plt.show()
+    
 
 def plot_population_lta(suite2p_path,
                         dlc_base_dir,
@@ -156,7 +187,7 @@ def plot_population_lta(suite2p_path,
     c_lengths = [0] + list(np.cumsum(trial_lengths))
 
     for i in range(len(c_lengths)-2):
-        k = DLC_aligned["TongueTip"][c_lengths[i]:c_lengths[i+1]]
+        k = DLC_aligned["TongueMid"][c_lengths[i]:c_lengths[i+1]]
         ttip.append(k[k["likelihood"] > 0.90])
 
         k = DLC_aligned["Lickport"][c_lengths[i]:c_lengths[i+1]]
@@ -182,25 +213,36 @@ def plot_population_lta(suite2p_path,
             lick_starts.append(tongue_start[i])
             ctr = ctr + 1
 
-    rtrel_dlc = dlc_approx_reward_time(lport, rt)
+    # rtrel_dlc = dlc_approx_reward_time(lport, rt)
+    rtrel_dlc = get_bpod_reward_times_aligned(lport, rt)
     
 
     tframes = 2000
     ctr = 0
     dff_avg = np.zeros((dff_aligned_s.shape[0], tframes, len(lick_starts)))
-    print(len(lick_starts))
-    for tl, ls in enumerate(lick_starts):
+    print("licks, ", len(lick_starts))
+    # for tl, ls in enumerate(lick_starts):
+    # print(rtrel_dlc, dict_aligned['reward_times_aligned'])
+    for tl, ls in enumerate(rtrel_dlc):
+        if len(ls) == 0:
+            continue
+        else:
+            ls = int(ls[0])
+        print(ls)
         k = dff_aligned_s[:, ls-tframes//2:ls+tframes//2]
         if k.shape[1] != dff_avg.shape[1]:
             # print("Not found")
             continue
         dff_avg[:,:,tl] = k
         ctr += 1
-
+    print(ctr)
+    dff_avg = dff_avg - np.mean(dff_avg[:, :200, :], axis=1, keepdims=True)
+    dff_sd = np.std(dff_avg, axis=-1)
+    sem = dff_sd/np.sqrt(dff_avg.shape[2])
     dff_avg = np.mean(dff_avg, axis=-1)
-    dff_avg = dff_avg - np.mean(dff_avg[:, :1000], axis=1).reshape(-1,1)
 
     means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
+    # means = np.mean(dff_avg - dff_sd, axis=1)
     # means = np.mean(dff_avg[:, tframes//2:], axis=1) - np.mean(dff_avg[:, :tframes//2], axis=1)
     sorted_m = np.argsort(means)[::-1]
     cn_sorted = np.argwhere(sorted_m == cn)
@@ -222,8 +264,10 @@ def plot_population_lta(suite2p_path,
         os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
         save_path = os.path.join(plt_save_path, mouse, f"lick_triggered_population-{session}")
         plt.tight_layout()
-        plt.savefig(save_path)
-        # plt.show(block=False)
+        # plt.savefig(save_path)
+        plt.show()
+
+    plot_trace(dff_avg, sem, indices=sorted_m[:8], dim=(4, 2))
     
     return dff_avg, sorted_m
 
@@ -246,7 +290,6 @@ def plot_sessionwise_change(suite2p_path,
                             bpod_path, sessionwise_data_path, plt_save_path, 
                             aligned_data_path, mouse, FOV, camera, session, plot=False)
         
-        print(dff_avg.shape)
         dffs.append(dff_avg)
         sorts.append(sorted_m)
         print(session)
@@ -263,14 +306,14 @@ def plot_sessionwise_change(suite2p_path,
 
     plt.figure(figsize=(16, 8))
     plt.subplot(121)
-    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-1, vmax=1))
+    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-0.5, vmax=0.5))
     plt.axvline(x=tframes//2, color='black')
     # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
     plt.title(f'{mouse}-{session_list[0]}')
     plt.colorbar()
 
     plt.subplot(122)
-    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-1, vmax=1))
+    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-0.5, vmax=0.5))
     plt.axvline(x=tframes//2, color='black')
     # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
     plt.title(f'{mouse}-{session_list[1]}')
@@ -295,13 +338,35 @@ aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_ali
 mouse = "BCI_26"
 FOV = "FOV_04"
 camera = "side" 
-session_list = ["041322", "041322_2"]
+# session_list = ["041322", "041322_2"]
 
+# # for session in session_list:
+# #     plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
+# #                         plt_save_path, aligned_data_path, mouse, FOV, camera, session)
+
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+
+# session_list = ["041422", "041522"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+
+# session_list = ["041122", "041222"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+
+# session_list = ["041922", "042022"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+
+# session_list = ["042022", "042122"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+
+# session_list = ["042722", "042822"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+# session_list = ["041922", "042022", "042122", "042222", "042722", "042822", "042922"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 # for session in session_list:
-#     plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
-#                         plt_save_path, aligned_data_path, mouse, FOV, camera, session)
+#     plot_population_lta(suite2p_path, dlc_base_dir, 
+#                         bpod_path, sessionwise_data_path, plt_save_path, 
+#                         aligned_data_path, mouse, FOV, camera, session, plot=False)
 
-plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
-
-session_list = ["041422", "041522"]
-plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+session = "041022"
+plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
+                    plt_save_path, aligned_data_path, mouse, FOV, camera, session, plot=True)
