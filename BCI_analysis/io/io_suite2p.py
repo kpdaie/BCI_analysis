@@ -4,7 +4,9 @@ import os
 import matplotlib.pyplot as plt
 import json
 import sys
-from pipeline.pipeline_imaging import find_conditioned_neuron_idx
+import argparse
+from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
+
 
 def suite2p_to_npy(suite2p_path, 
                    raw_data_path, 
@@ -223,4 +225,3 @@ def suite2p_to_npy(suite2p_path,
                     #%%
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
-# %%
