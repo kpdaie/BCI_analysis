@@ -57,6 +57,7 @@ def suite2p_to_npy(suite2p_path,
     suite2p_to_npy(suite2p_path, raw_data_path, behavior_data_path, save_path, overwrite=True, mice_name = mice_name)
     """
     #%%
+    adjust_channel_offsets = False
     frames_this_trial = max_frames - frames_prev_trial
     if mice_name is None:
         mice_name = os.listdir(suite2p_path)
@@ -108,9 +109,10 @@ def suite2p_to_npy(suite2p_path,
                     photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
                     f0_scalar = np.mean(np.load(os.path.join(session_path,'F0.npy')),1)                    
                     
-                    channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
-                    F+= channel_offset_dict['channel_offset']
-                    F0+=channel_offset_dict['channel_offset']                    
+                    if adjust_channel_offsets: # this is optional, might not be important
+                        channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
+                        F+= channel_offset_dict['channel_offset']
+                        F0+=channel_offset_dict['channel_offset']                    
                     dff = (F-F0)/F0
 
                     with open(os.path.join(session_path, "filelist.json")) as json_file:
