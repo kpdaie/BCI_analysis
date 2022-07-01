@@ -5,8 +5,6 @@ __pycache__/
 
 # Data
 bucket/
-Plots/use_data
-data_aligned/
 
 # C extensions
 *.so
