@@ -1,5 +1,4 @@
 #%%
-from asyncore import file_wrapper
 import os
 import json
 import numpy as np
@@ -7,6 +6,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
+from io_bci.io_suite2p import sessionwise_to_trialwise
+import json
 
 def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge'):
     pad_width = target_length - dlc_data.shape[0]%target_length
@@ -124,11 +125,15 @@ def get_aligned_data(suite2p_path,
     cl_trial_list = [filelist['file_name_list'][i] for i in range(len(filelist['frame_num_list'])) if filelist['file_name_list'][i].startswith("neuron")]
     print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
 
+    F_trialwise = sessionwise_to_trialwise(F, ca_data['all_si_filenames'], ca_data['closed_loop_filenames'], 
+            ca_data['all_si_frame_nums'], ca_data['sampling_rate'], align_on="trial_start", max_frames="all")
+
     F_aligned = []
     lt = []
     rt = []
     tt = []
     dlc_data = None
+    trials_taken = []
 
     for i, bm_name in tqdm(enumerate(behavior_movie_names)):
 
@@ -155,41 +160,57 @@ def get_aligned_data(suite2p_path,
 
         trial_json = os.path.join(dlc_folder, trial_id+".json")
         with open(trial_json) as f:
-            trial_metadata = json.load(f)
-        
-        frame_times_rel0 = (trial_start_times[i] - trial_start_times[0]).total_seconds() + np.asarray(trial_metadata['frame_times'])
-        F_trial = F[:, int(frame_times_rel0[0]*fs):int(frame_times_rel0[-1]*fs)]
+            trial_metadata = json.load(f) 
+        F_trial = F_trialwise[i].T
+        print(F_trial.shape)
 
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
+        trial_json = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("json")][0]
+
+        frame_times_dlc = np.asarray(trial_metadata['frame_times'])
+        frame_times_ca = np.arange(0, F_trial.shape[1], 1, dtype=float)/fs
+
+
+
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
-        # dlc_trial = collapse_dlc_data(dlc_trial, F_trial.shape[1], mode='edge')
         if dlc_trial.shape[0] == 0 or F_trial.shape[1] == 0:
             print(dlc_trial.shape, F_trial.shape)
             continue
+
+        if frame_times_dlc[-1] > frame_times_ca[-1]:
+            closest_id = np.argmin(np.abs(frame_times_dlc - frame_times_ca[-1]))
+            print(f"offset shape = {dlc_trial.shape[0] - closest_id}")
+            dlc_trial = dlc_trial[:closest_id]
+
+        if frame_times_dlc[-1] < frame_times_ca[-1]:
+            closest_id = np.argmin(np.abs(frame_times_ca - frame_times_dlc[-1]))
+            print(f"offset shape = {F_trial.shape[1] - closest_id}")
+            F_trial = F_trial[:, :closest_id]
+
         dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
 
         F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
         F_aligned.append(F_trial)
+        trials_taken.append(i)
         lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
         rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
         tt.append(trial_times[i])
-
+                    
     if len(F_aligned) == 0:
         print(f"No data found, session {session}")
         return None
     F_aligned_s = np.hstack(F_aligned)
 
-    ## dff = (F-sd)/sd
     sd_list = np.nanstd(F_aligned_s, axis=1).reshape(-1, 1)
     dff_aligned = []
     for i, F_trial in enumerate(F_aligned):
         dff_aligned.append((F_trial - sd_list)/sd_list)
     dff_aligned_s = np.hstack(dff_aligned)
 
-    # baseline subtraction: dff = dff - dff[:1000]
-    baseline_sub = np.nanmean(dff_aligned_s[:, :1000], axis=1).reshape(-1, 1)
-    for i, dff_trial in enumerate(dff_aligned):
-        dff_aligned[i] = dff_trial - baseline_sub
+    # # baseline subtraction: dff = dff - dff[:1000]
+    # baseline_sub = np.nanmean(dff_aligned_s[:, :1000], axis=1).reshape(-1, 1)
+    # for i, dff_trial in enumerate(dff_aligned):
+    #     dff_aligned[i] = dff_trial - baseline_sub
 
     cn = ca_data["cn"][0]
     if cn is None:
@@ -203,86 +224,9 @@ def get_aligned_data(suite2p_path,
             "lick_times_aligned": lt,
             "reward_times_aligned": rt,
             "trial_times_aligned": tt,
-            "cn": cn
+            "cn": cn,
+            "trials_taken": trials_taken
             } 
     np.save(dict_save_path, dict_return)
     return dict_return
 
-
-def align_licks(suite2p_path,
-                dlc_base_dir,
-                bpod_path,
-                sessionwise_data_path,
-                mouse = "BCI_26",
-                FOV = "FOV_04",
-                camera = "side",
-                session = "041022"):
-
-
-    bpod_filepath = os.path.join(bpod_path, mouse, session+"-bpod_zaber.npy")
-    bpod_data = np.load(bpod_filepath, allow_pickle=True).tolist()
-    behavior_movie_names = bpod_data['behavior_movie_name_list'][:-1]
-    trial_start_times = bpod_data['trial_start_times']
-
-    ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
-    F = ca_data['F_sessionwise']
-    fs = ca_data['sampling_rate']
-    lick_times = ca_data['lick_times']
-    reward_times = ca_data['reward_times']
-
-    with open(os.path.join(suite2p_path, mouse, FOV, session, "filelist.json")) as f:
-        filelist = json.load(f)
-
-    cl_trial_list = [filelist['file_name_list'][i] for i in range(len(filelist['frame_num_list'])) if filelist['file_name_list'][i].startswith("neuron")]
-    print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
-
-    F_behavior = []
-    lt = []
-    rt = []
-    dlc_data = None
-
-    for i, bm_name in tqdm(enumerate(behavior_movie_names)):
-
-        if type(bm_name) == str:
-            print(f"{camera} camera not found for trial {i}, skipping")
-            continue
-        
-        camera_movies = []
-        for video_file in bm_name:
-            if camera in video_file: 
-                camera_movies.append(video_file)
-        
-        if len(camera_movies) == 0:
-            print(f"{camera} camera not found for trial {i}, skipping")
-            continue
-        elif len(camera_movies) > 1:
-            print(f"Multiple {camera} camera files found for trial {i}, skipping")
-            continue
-        
-        video_path = camera_movies[0]
-        dlc_file_name = video_path[video_path.find(camera)+len(camera)+1:].split("/") #[mouse, session_id, trial_id]
-        dlc_folder = os.path.join(dlc_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
-        trial_id = dlc_file_name[2][:-5]
-
-        trial_json = os.path.join(dlc_folder, trial_id+".json")
-        with open(trial_json) as f:
-            trial_metadata = json.load(f)
-
-        frame_times_rel0 = (trial_start_times[i] - trial_start_times[0]).total_seconds() + np.asarray(trial_metadata['frame_times'])
-        F_trial = F[:, int(frame_times_rel0[0]*fs):int(frame_times_rel0[-1]*fs)]
-
-        trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
-        dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0).drop('likelihood', level=1, axis=1)
-        # dlc_trial = collapse_dlc_data(dlc_trial, F_trial.shape[1], mode='edge')
-        dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True)
-
-        F_trial = interpolate_ca_data(dlc_trial, F_trial)
-        F_behavior.append(F_trial)
-        lt.append(lick_times[i])
-        rt.append(reward_times[i])
-
-    for i in range(len(lt)):
-        plt.plot(lt[i], i, 'o')
-        plt.plot(lt[i], i, 'o')
-
-# %%

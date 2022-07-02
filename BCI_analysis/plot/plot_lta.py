@@ -74,10 +74,13 @@ def find_nearest_above(my_array, target):
 
 def get_bpod_reward_times_aligned(lport, rt):
 
+    print(len(lport), len(rt))
+
     rtrel_dlc  = []
     frame_since_start = 0
     for trial in range(len(lport)):
         if len(rt[trial]) == 0:
+            frame_since_start += lport[trial].shape[0]
             rtrel_dlc.append([])
             continue
         closest = frame_since_start + int(rt[trial][0])
@@ -168,7 +171,7 @@ def plot_population_lta(suite2p_path,
 
     dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
             sessionwise_data_path, aligned_data_path, mouse, 
-            FOV, camera, session, plot=False, overwrite=False)
+            FOV, camera, session, plot=False, overwrite=True)
 
     if dict_aligned is None:
         return
@@ -181,12 +184,13 @@ def plot_population_lta(suite2p_path,
     DLC_aligned = pd.DataFrame.from_dict(dict_aligned["DLC_aligned"])
     trial_lengths = [F_aligned[i].shape[1] for i in range(len(F_aligned))]
     cn = dict_aligned["cn"]
+    trials_taken = np.asarray(dict_aligned["trials_taken"])
 
     ttip = []
     lport = []
     c_lengths = [0] + list(np.cumsum(trial_lengths))
 
-    for i in range(len(c_lengths)-2):
+    for i in range(len(c_lengths)-1):
         k = DLC_aligned["TongueMid"][c_lengths[i]:c_lengths[i+1]]
         ttip.append(k[k["likelihood"] > 0.90])
 
@@ -215,31 +219,33 @@ def plot_population_lta(suite2p_path,
 
     # rtrel_dlc = dlc_approx_reward_time(lport, rt)
     rtrel_dlc = get_bpod_reward_times_aligned(lport, rt)
-    
 
     tframes = 2000
     ctr = 0
-    dff_avg = np.zeros((dff_aligned_s.shape[0], tframes, len(lick_starts)))
+    dff_lw = np.zeros((dff_aligned_s.shape[0], tframes, len(lick_starts)))
     print("licks, ", len(lick_starts))
     # for tl, ls in enumerate(lick_starts):
     # print(rtrel_dlc, dict_aligned['reward_times_aligned'])
     for tl, ls in enumerate(rtrel_dlc):
+        if tl not in trials_taken:
+            print("Trial not taken ", tl)
+            continue
         if len(ls) == 0:
             continue
         else:
             ls = int(ls[0])
-        print(ls)
+        print(c_lengths[tl], ls, ls - c_lengths[tl])
         k = dff_aligned_s[:, ls-tframes//2:ls+tframes//2]
-        if k.shape[1] != dff_avg.shape[1]:
-            # print("Not found")
+        if k.shape[1] != dff_lw.shape[1]:
+            print("Not found")
             continue
-        dff_avg[:,:,tl] = k
+        dff_lw[:,:,tl] = k
         ctr += 1
     print(ctr)
-    dff_avg = dff_avg - np.mean(dff_avg[:, :200, :], axis=1, keepdims=True)
-    dff_sd = np.std(dff_avg, axis=-1)
-    sem = dff_sd/np.sqrt(dff_avg.shape[2])
-    dff_avg = np.mean(dff_avg, axis=-1)
+    dff_sd = np.std(dff_lw, axis=-1)
+    sem = dff_sd/np.sqrt(dff_lw.shape[2])
+    dff_avg = np.mean(dff_lw, axis=-1)
+    dff_avg = dff_avg - np.mean(dff_avg[:, :tframes//2], axis=1, keepdims=True)
 
     means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
     # means = np.mean(dff_avg - dff_sd, axis=1)
@@ -250,7 +256,7 @@ def plot_population_lta(suite2p_path,
     if plot == True:
         plt.figure(figsize=(16, 8))
         plt.subplot(121)
-        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(0))
+        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic')
         plt.axvline(x=tframes//2, color='black')
         plt.yticks(cn_sorted[0], [f'{cn}: CN'])
         plt.title(f'{mouse}-{session}')
@@ -306,14 +312,14 @@ def plot_sessionwise_change(suite2p_path,
 
     plt.figure(figsize=(16, 8))
     plt.subplot(121)
-    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-0.5, vmax=0.5))
+    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic')
     plt.axvline(x=tframes//2, color='black')
     # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
     plt.title(f'{mouse}-{session_list[0]}')
     plt.colorbar()
 
     plt.subplot(122)
-    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vcenter=0, vmin=-0.5, vmax=0.5))
+    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic')
     plt.axvline(x=tframes//2, color='black')
     # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
     plt.title(f'{mouse}-{session_list[1]}')
@@ -349,8 +355,8 @@ camera = "side"
 # session_list = ["041422", "041522"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
-# session_list = ["041122", "041222"]
-# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+session_list = ["041122", "041022"]
+plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
 # session_list = ["041922", "042022"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
