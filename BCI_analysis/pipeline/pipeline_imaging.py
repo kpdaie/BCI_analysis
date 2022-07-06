@@ -102,6 +102,8 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
     Ly = float(metadata['metadata']['hRoiManager']['linesPerFrame'])
     #
     for roi in rois:
+        if 'name' not in roi.keys():
+            continue
         try:
             px,py = roi['scanfields']['centerXY']
             if 'rotation_deg' in meanimg_dict.keys():
