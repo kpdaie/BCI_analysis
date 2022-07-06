@@ -61,7 +61,10 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
                 rois = [rois]
             roinames_list = list() 
             for roi in rois:
-                roinames_list.append(roi['name'])
+                try:
+                    roinames_list.append(roi['name'])
+                except:
+                    roinames_list.append(None)
             try:
                 roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
             except:
