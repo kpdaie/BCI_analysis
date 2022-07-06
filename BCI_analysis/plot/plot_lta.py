@@ -171,7 +171,7 @@ def plot_population_lta(suite2p_path,
 
     dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
             sessionwise_data_path, aligned_data_path, mouse, 
-            FOV, camera, session, plot=False, overwrite=True)
+            FOV, camera, session, plot=False, overwrite=False)
 
     if dict_aligned is None:
         return
@@ -277,6 +277,24 @@ def plot_population_lta(suite2p_path,
     
     return dff_avg, sorted_m
 
+def linear_regression(suite2p_path,
+                    dlc_base_dir,
+                    bpod_path,
+                    sessionwise_data_path,
+                    plt_save_path,
+                    aligned_data_path,
+                    mouse="BCI_26",
+                    FOV="FOV_04",
+                    camera="side",
+                    session="041022"):
+
+    dff_avg, sorted_m = plot_population_lta(suite2p_path, dlc_base_dir, 
+                        bpod_path, sessionwise_data_path, plt_save_path, 
+                        aligned_data_path, mouse, FOV, camera, session, plot=False)
+
+    plt.plot()
+
+
 def plot_sessionwise_change(suite2p_path,
                             dlc_base_dir,
                             bpod_path,
@@ -312,14 +330,14 @@ def plot_sessionwise_change(suite2p_path,
 
     plt.figure(figsize=(16, 8))
     plt.subplot(121)
-    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic')
+    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vmin=-0.5, vmax=1, vcenter=0))
     plt.axvline(x=tframes//2, color='black')
     # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
     plt.title(f'{mouse}-{session_list[0]}')
     plt.colorbar()
 
     plt.subplot(122)
-    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic')
+    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vmin=-0.5, vmax=1, vcenter=0))
     plt.axvline(x=tframes//2, color='black')
     # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
     plt.title(f'{mouse}-{session_list[1]}')
@@ -355,7 +373,7 @@ camera = "side"
 # session_list = ["041422", "041522"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
-session_list = ["041122", "041022"]
+session_list = ["041022", "041122"]
 plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
 # session_list = ["041922", "042022"]
@@ -373,6 +391,6 @@ plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_
 #                         bpod_path, sessionwise_data_path, plt_save_path, 
 #                         aligned_data_path, mouse, FOV, camera, session, plot=False)
 
-session = "041022"
-plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
-                    plt_save_path, aligned_data_path, mouse, FOV, camera, session, plot=True)
+# session = "041022"
+# plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
+#                     plt_save_path, aligned_data_path, mouse, FOV, camera, session, plot=True)

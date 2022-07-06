@@ -229,4 +229,3 @@ def get_aligned_data(suite2p_path,
             } 
     np.save(dict_save_path, dict_return)
     return dict_return
-
