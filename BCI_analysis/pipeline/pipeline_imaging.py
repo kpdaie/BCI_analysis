@@ -68,9 +68,14 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
             try:
                 roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
             except:
-                print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
-                conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
-                roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+                try:
+                    print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
+                    conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
+                    roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+                except:
+                    print('no usable ROI idx, skipping')
+                    roi_idx = None
+                    
         else:
             conditioned_neuron_name  =''
             roi_idx = None
