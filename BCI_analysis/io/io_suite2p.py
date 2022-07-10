@@ -107,7 +107,8 @@ def suite2p_to_npy(suite2p_path,
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
                     photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
-                    f0_scalar = np.mean(np.load(os.path.join(session_path,'F0.npy')),1)                    
+                                    
+                    f0_scalar = np.percentile(F0[:,:int(F0.shape[1]/2)],10,axis = 1)                    
                     
                     if adjust_channel_offsets: # this is optional, might not be important
                         channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
