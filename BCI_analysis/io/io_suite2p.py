@@ -27,7 +27,7 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                     continue
                 start_frame = filename_start_frame[i]
                 end_frame = filename_start_frame[i+1]
-                print(start_frame, end_frame)
+                print(f"Frames taken from {start_frame} to {end_frame}")
 
                 if align_on == "go_cue":
                     start_frame += int(go_cue_times[counter]*fs)
@@ -145,7 +145,6 @@ def suite2p_to_npy(suite2p_path,
         if fov_list is None:
             # fov_list = os.listdir(suite2p_data)
             fov_list = [k for k in os.listdir(suite2p_data) if k[-2:].isdigit()] # For BCI_29 there exists folders other than FOV_0x
-            print(fov_list)
 
         for fov in fov_list:
             fov_path = os.path.join(suite2p_data, fov)
@@ -173,6 +172,7 @@ def suite2p_to_npy(suite2p_path,
                     print(f"FOV: {fov}, Session Date: {session_date}")
                     session_path = os.path.join(fov_path, session_date)
                     if not os.path.isfile(os.path.join(session_path, "ops.npy")):
+                        print(f"{session_date} and {fov} do not match")
                         continue
                     ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
                     fs = ops['fs']
