@@ -216,7 +216,7 @@ def suite2p_to_npy(suite2p_path,
                     dff_trialwise_closed_loop =  np.ones((max_frames, F.shape[0], len(closed_loop_filenames)))*np.nan
 
                     counter = 0
-                    for i, filename in tqdm(enumerate(all_si_filenames)):
+                    for i, filename in enumerate(all_si_filenames):
                         start_frame = filename_start_frame[i]
                         end_frame = filename_start_frame[i+1]
                         
