@@ -1,17 +1,18 @@
 # %%
 import os
+from BCI_analysis.pipeline.pipeline_align import get_aligned_data
+from BCI_analysis.io_bci.io_suite2p import suite2p_to_npy
 
 import matplotlib.colors as cl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sys
-sys.path.append("/home/labadmin/Github/BCI_analysis/BCI_analysis")
-from pipeline.pipeline_align import get_aligned_data
 from tqdm import tqdm
 
-from plot.plot_utils import rollingfun
+from BCI_analysis.plot.plot_utils import rollingfun
 
+norm_cl = cl.TwoSlopeNorm(vmin=-1.0, vcenter=0, vmax=1.0)
 
 def segment(arr, max=20):
     """
@@ -72,6 +73,41 @@ def find_nearest_above(my_array, target):
     masked_diff = np.ma.masked_array(diff, mask)
     return masked_diff.argmin()
 
+def get_paw_changes(DLC_paw, start=None, end=None, plot=False):
+
+    '''
+       r: Discounting rate
+       order: AR model order
+       smooth: smoothing window size T
+    '''
+    if start == None:
+        start = 0
+    if end == None:
+        end = len(DLC_paw)
+    # cf = changefinder.ChangeFinder(r=r, order=order, smooth=smooth)
+    # ts_score = [cf.update(p) for p in DLC_paw[start:end].values]
+    # ts_change_loc1 = pd.Series(ts_score).nlargest(nlargest)
+    # ts_change_loc1 = ts_change_loc1.index.values
+    # if plot:
+    #     plt.figure(figsize=(16,4))
+    #     plt.plot(DLC_paw[start:end])
+    #     plt.figure(figsize=(16,4))
+    #     [plt.axvline(ts_change_loc1[i], linewidth=1, color='g') for i in range(len(ts_change_loc1))]
+    #     plt.plot(ts_score, color='red')
+    #     plt.show()
+    p = 10
+    s = DLC_paw[start:end]
+    diffs = s.diff(periods=p)
+    std = diffs.std()
+    significant_changes = diffs.loc[diffs > std].index
+    seg = segment(significant_changes, 200)
+    significant_changes = [seg[i][0] for i in range(len(seg))]
+    if plot:
+        plt.plot(DLC_paw)
+        [plt.axvline(significant_changes[i], linewidth=1, color='g') for i in range(len(significant_changes))]
+        plt.show()
+    return significant_changes
+
 def get_bpod_reward_times_aligned(lport, rt):
 
     print(len(lport), len(rt))
@@ -96,8 +132,18 @@ def dlc_approx_reward_time(lport, rt):
     trials_ignore = []
     rtrel_dlc  = []
     frame_since_start = 0
+    
+    mlp = []
+    for trial in range(len(rt)):
+        if len(rt[trial]) == 0:
+            continue
+        mlp.append(np.median(lport[trial][-10:]))
+
+    cutoff_val = int(np.median(mlp))
+    print(cutoff_val)
+
     for trial in range(len(lport)):
-        if lport[trial]["x"][500:].max() > 300 and len(rt[trial]) == 0:
+        if lport[trial]["x"][500:].max() > cutoff_val and len(rt[trial]) == 0:
             trials_ignore.append(trial)
             rtrel_dlc.append([])
             frame_since_start += lport[trial].shape[0]
@@ -108,11 +154,13 @@ def dlc_approx_reward_time(lport, rt):
             frame_since_start += lport[trial].shape[0]
             continue
 
-        if lport[trial]["x"][1000:].max() < 300 and len(rt[trial]) != 0:
+        if lport[trial]["x"][1000:].max() < cutoff_val and len(rt[trial]) != 0:
             rtrel_dlc.append([])
+            frame_since_start += lport[trial].shape[0]
             print(trial, rt[trial])
+            continue
 
-        nearest = find_nearest_above(rollingfun(lport[trial]['x'][500:].values, 1000), 301)
+        nearest = find_nearest_above(rollingfun(lport[trial]['x'][500:].values, 1000), cutoff_val+1)
         if nearest is None:
             rtrel_dlc.append([])
 
@@ -143,6 +191,7 @@ def plot_population_lta(suite2p_path,
                         sessionwise_data_path,
                         plt_save_path,
                         aligned_data_path,
+                        align_at="lick",
                         mouse="BCI_26",
                         FOV="FOV_04",
                         camera="side",
@@ -154,11 +203,11 @@ def plot_population_lta(suite2p_path,
     sorted heatmap for all neurons.
 
     Example:
-    dlc_base_dir = os.path.abspath("../../bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
-    bpod_path = os.path.abspath("../../bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
-    suite2p_path = os.path.abspath("../../bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
-    sessionwise_data_path = os.path.abspath("../../bucket/Data/Calcium_imaging/sessionwise_tba/")
-    plt_save_path = os.path.abspath("../../Plots/")
+    dlc_base_dir = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
+    bpod_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
+    suite2p_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
+    sessionwise_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/sessionwise_tba/")
+    plt_save_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/Plots/")
     aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_aligned")
 
     mouse = "BCI_26"
@@ -183,80 +232,96 @@ def plot_population_lta(suite2p_path,
     dff_aligned_s = np.hstack(dff_aligned)
     DLC_aligned = pd.DataFrame.from_dict(dict_aligned["DLC_aligned"])
     trial_lengths = [F_aligned[i].shape[1] for i in range(len(F_aligned))]
+    print(trial_lengths)
     cn = dict_aligned["cn"]
     trials_taken = np.asarray(dict_aligned["trials_taken"])
+    print(trials_taken)
 
     ttip = []
     lport = []
     c_lengths = [0] + list(np.cumsum(trial_lengths))
+    changetimes = []
 
     for i in range(len(c_lengths)-1):
-        k = DLC_aligned["TongueMid"][c_lengths[i]:c_lengths[i+1]]
+        k = DLC_aligned["TongueTip"][c_lengths[i]:c_lengths[i+1]]
         ttip.append(k[k["likelihood"] > 0.90])
 
         k = DLC_aligned["Lickport"][c_lengths[i]:c_lengths[i+1]]
         lport.append(k)
 
+    # plot_lick_lickport(ttip, lport, 0)
+    # plot_lick_lickport(ttip, lport, 6)
+    # plot_lick_lickport(ttip, lport, 8)
 
-    ctr=0
-    lick_starts = []
-    for trial in range(len(ttip)):
-        arr = ttip[trial].index.values
-        if len(arr) == 0:
-            continue
-        k = segment(arr, max=400)
-        tongue_start = np.array([k[i][0] for i in range(len(k))])
-        tongue_end = np.array([k[i][-1] for i in range(len(k))])
-
-        for i in range(tongue_start.shape[0]):
-            tongue_start_end = (tongue_start[i] + tongue_end[i])//2
-            movement = lport[trial]["x"].loc[tongue_start_end - 500: tongue_start_end + 500].values
-            if np.mean(movement[:500]) > 300:
+    if align_at == "lick":
+        ctr=0
+        lick_starts = []
+        for trial in range(len(ttip)):
+            arr = ttip[trial].index.values
+            if len(arr) == 0:
                 continue
+            k = segment(arr, max=200)
+            tongue_start = np.array([k[i][0] for i in range(len(k))])
+            tongue_end = np.array([k[i][-1] for i in range(len(k))])
 
-            lick_starts.append(tongue_start[i])
-            ctr = ctr + 1
+            for i in range(tongue_start.shape[0]):
+                tongue_start_end = (tongue_start[i] + tongue_end[i])//2
+                movement = lport[trial]["x"].loc[tongue_start_end - 500: tongue_start_end + 500].values
+                if np.mean(movement[:500]) > 300:
+                    continue
 
-    # rtrel_dlc = dlc_approx_reward_time(lport, rt)
-    rtrel_dlc = get_bpod_reward_times_aligned(lport, rt)
+                lick_starts.append((trial, tongue_start[i]))
+                ctr = ctr + 1
+        print("licks, ", len(lick_starts))
+        changetimes = lick_starts       # lick_starts is a list of tuples (trial_num, lick_time)
+
+    elif align_at == "reward":
+        # rtrel_dlc = dlc_approx_reward_time(lport, rt)
+        rtrel_dlc = get_bpod_reward_times_aligned(lport, rt)
+        rtrel_dlc = [(ctr, int(k[0])) for ctr, k in enumerate(rtrel_dlc) if len(k) != 0]
+        changetimes = rtrel_dlc     # rtrel_dlc is a list of tuples (trial_num, reward_time)
+
+    elif align_at == "PawL" or "PawR" or "EyeDown" or "EyeRight":
+        global norm_cl 
+        norm_cl = cl.TwoSlopeNorm(vmin=-0.1, vmax=0.1, vcenter=0)
+        changetimes = []
+        for i in range(len(c_lengths)-1):
+            DLC_paw = DLC_aligned[align_at]["x"][c_lengths[i]:c_lengths[i+1]]
+            ts_change_loc1 = get_paw_changes(DLC_paw)
+            [changetimes.append((i, j)) for j in ts_change_loc1]
 
     tframes = 2000
     ctr = 0
-    dff_lw = np.zeros((dff_aligned_s.shape[0], tframes, len(lick_starts)))
-    print("licks, ", len(lick_starts))
+    dff_lw = np.zeros((dff_aligned_s.shape[0], tframes, len(changetimes)))
     # for tl, ls in enumerate(lick_starts):
     # print(rtrel_dlc, dict_aligned['reward_times_aligned'])
-    for tl, ls in enumerate(rtrel_dlc):
+    for i, (tl, ls) in enumerate(changetimes):
+        print(tl)
         if tl not in trials_taken:
             print("Trial not taken ", tl)
             continue
-        if len(ls) == 0:
-            continue
-        else:
-            ls = int(ls[0])
         print(c_lengths[tl], ls, ls - c_lengths[tl])
         k = dff_aligned_s[:, ls-tframes//2:ls+tframes//2]
         if k.shape[1] != dff_lw.shape[1]:
             print("Not found")
             continue
-        dff_lw[:,:,tl] = k
+        dff_lw[:,:,i] = k
         ctr += 1
     print(ctr)
     dff_sd = np.std(dff_lw, axis=-1)
     sem = dff_sd/np.sqrt(dff_lw.shape[2])
     dff_avg = np.mean(dff_lw, axis=-1)
-    dff_avg = dff_avg - np.mean(dff_avg[:, :tframes//2], axis=1, keepdims=True)
+    dff_avg = dff_avg - np.mean(dff_avg[:, :tframes//4], axis=1, keepdims=True)
 
     means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
-    # means = np.mean(dff_avg - dff_sd, axis=1)
-    # means = np.mean(dff_avg[:, tframes//2:], axis=1) - np.mean(dff_avg[:, :tframes//2], axis=1)
     sorted_m = np.argsort(means)[::-1]
     cn_sorted = np.argwhere(sorted_m == cn)
+
 
     if plot == True:
         plt.figure(figsize=(16, 8))
         plt.subplot(121)
-        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic')
+        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic', norm=norm_cl)
         plt.axvline(x=tframes//2, color='black')
         plt.yticks(cn_sorted[0], [f'{cn}: CN'])
         plt.title(f'{mouse}-{session}')
@@ -268,12 +333,13 @@ def plot_population_lta(suite2p_path,
         plt.axvline(x=1000, ymin=0.25, ymax=0.75, color='black', linestyle='--')
 
         os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
-        save_path = os.path.join(plt_save_path, mouse, f"lick_triggered_population-{session}")
+        save_path = os.path.join(plt_save_path, mouse, f"lick_triggered_population-{session}-aligned-{align_at}")
         plt.tight_layout()
-        # plt.savefig(save_path)
+        plt.savefig(save_path)
+        print(f"saved to {save_path}")
         plt.show()
 
-    plot_trace(dff_avg, sem, indices=sorted_m[:8], dim=(4, 2))
+        plot_trace(dff_avg, sem, indices=sorted_m[:8], dim=(4, 2))
     
     return dff_avg, sorted_m
 
@@ -301,6 +367,7 @@ def plot_sessionwise_change(suite2p_path,
                             sessionwise_data_path,
                             plt_save_path,
                             aligned_data_path,
+                            align_at="lick",
                             mouse="BCI_26",
                             FOV="FOV_04",
                             camera="side",
@@ -312,7 +379,7 @@ def plot_sessionwise_change(suite2p_path,
     for session in session_list:
         dff_avg, sorted_m = plot_population_lta(suite2p_path, dlc_base_dir, 
                             bpod_path, sessionwise_data_path, plt_save_path, 
-                            aligned_data_path, mouse, FOV, camera, session, plot=False)
+                            aligned_data_path, align_at, mouse, FOV, camera, session, plot=False)
         
         dffs.append(dff_avg)
         sorts.append(sorted_m)
@@ -328,40 +395,38 @@ def plot_sessionwise_change(suite2p_path,
     # plt.ylabel(f'{session_list[1]}')
     # plt.show()
 
-    plt.figure(figsize=(16, 8))
-    plt.subplot(121)
-    plt.imshow(dffs[0][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vmin=-0.5, vmax=1, vcenter=0))
-    plt.axvline(x=tframes//2, color='black')
-    # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
-    plt.title(f'{mouse}-{session_list[0]}')
-    plt.colorbar()
+    fig, axes = plt.subplots(1, len(session_list), figsize=(16, 8))
+    for i, session in enumerate(session_list):
+        im = axes[i].imshow(dffs[i][sorts[0]], aspect="auto", cmap='seismic', norm=norm_cl)
+        axes[i].axvline(x=tframes//2, color='black')
+        # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
+        axes[i].set_title(f'{mouse}-{session_list[i]}')
 
-    plt.subplot(122)
-    plt.imshow(dffs[1][sorts[0]], aspect="auto", cmap='seismic', norm=cl.TwoSlopeNorm(vmin=-0.5, vmax=1, vcenter=0))
-    plt.axvline(x=tframes//2, color='black')
-    # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
-    plt.title(f'{mouse}-{session_list[1]}')
-    plt.colorbar()
-
-    os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
-    save_path = os.path.join(plt_save_path, mouse, f"{session_list[0]}-{session_list[1]}-heatmap")
     plt.tight_layout()
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    fig.colorbar(im, cax=cbar_ax)
+    # fig.colorbar(im, ax=axes.ravel().tolist())
+    os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
+    save_path = os.path.join(plt_save_path, mouse, f"{'-'.join(session_list)}-{align_at}-heatmap.png")
     plt.savefig(save_path)
+    plt.show()
 
 
 # %%
+if __name__ == "__main__":
+    dlc_base_dir = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
+    bpod_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
+    suite2p_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
+    sessionwise_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/sessionwise_tba/")
+    plt_save_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/Plots/")
+    aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_aligned")
 
-dlc_base_dir = os.path.abspath("../../bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/")
-bpod_path = os.path.abspath("../../bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
-suite2p_path = os.path.abspath("../../bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
-sessionwise_data_path = os.path.abspath("../../bucket/Data/Calcium_imaging/sessionwise_tba/")
-plt_save_path = os.path.abspath("../../Plots/")
-aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_aligned")
 
-
-mouse = "BCI_26"
-FOV = "FOV_04"
-camera = "side" 
+    mouse = "BCI_29"
+    FOV = "FOV_03"
+    camera = "side"
+    align_at = "reward"
 # session_list = ["041322", "041322_2"]
 
 # # for session in session_list:
@@ -373,14 +438,14 @@ camera = "side"
 # session_list = ["041422", "041522"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
-session_list = ["041022", "041122"]
-plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+# session_list = ["042522", "042722"]
+# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, align_at, mouse, FOV, camera, session_list)
 
 # session_list = ["041922", "042022"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
-# session_list = ["042022", "042122"]
-# plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
+    session_list = ["050422", "050522", "050622"]
+    plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, align_at, mouse, FOV, camera, session_list)
 
 # session_list = ["042722", "042822"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
@@ -391,6 +456,13 @@ plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_
 #                         bpod_path, sessionwise_data_path, plt_save_path, 
 #                         aligned_data_path, mouse, FOV, camera, session, plot=False)
 
-# session = "041022"
-# plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
-#                     plt_save_path, aligned_data_path, mouse, FOV, camera, session, plot=True)
+    # session = "050422"
+    # plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path,
+    #                     plt_save_path, aligned_data_path, align_at, mouse, FOV, camera, session, plot=True)
+
+    # bpod_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
+    # suite2p_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
+    # mice_name = "BCI_29"
+    # raw_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/")
+    # save_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/sessionwise_tba")
+    # suite2p_to_npy(suite2p_path, raw_data_path, bpod_path, save_path, overwrite=True, fov_list=["FOV_04", "FOV_05"], mice_name = mice_name)

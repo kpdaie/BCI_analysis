@@ -7,6 +7,8 @@ __pycache__/
 bucket/
 Plots/use_data
 data_aligned/
+*.npz
+*.npy
 
 # C extensions
 *.so

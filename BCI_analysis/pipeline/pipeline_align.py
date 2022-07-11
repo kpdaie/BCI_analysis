@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
-from io_bci.io_suite2p import sessionwise_to_trialwise
+from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise
 import json
 
 def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge'):

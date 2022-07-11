@@ -2,7 +2,8 @@
 import numpy as np
 import os
 import json
-from pipeline.pipeline_imaging import find_conditioned_neuron_idx
+from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
+from tqdm import tqdm
 
 def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_num, fs, align_on = "go_cue", go_cue_times=None, reward_times=None, max_frames=None, frames_after=None, frames_before=None):
     """
@@ -142,7 +143,9 @@ def suite2p_to_npy(suite2p_path,
         os.makedirs(mice_save_path, exist_ok=True)
 
         if fov_list is None:
-            fov_list = os.listdir(suite2p_data)
+            # fov_list = os.listdir(suite2p_data)
+            fov_list = [k for k in os.listdir(suite2p_data) if k[-2:].isdigit()] # For BCI_29 there exists folders other than FOV_0x
+            print(fov_list)
 
         for fov in fov_list:
             fov_path = os.path.join(suite2p_data, fov)
@@ -169,6 +172,8 @@ def suite2p_to_npy(suite2p_path,
                 else: 
                     print(f"FOV: {fov}, Session Date: {session_date}")
                     session_path = os.path.join(fov_path, session_date)
+                    if not os.path.isfile(os.path.join(session_path, "ops.npy")):
+                        continue
                     ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
                     fs = ops['fs']
                     tsta = np.arange(-frames_prev_trial, frames_this_trial, 1).astype(float)/fs
@@ -176,7 +181,8 @@ def suite2p_to_npy(suite2p_path,
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
                     photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
-                    f0_scalar = np.mean(np.load(os.path.join(session_path,'F0.npy')),1)                    
+
+                    f0_scalar = np.percentile(F0[:,:int(F0.shape[1]/2)],10,axis = 1)
                     
                     if adjust_channel_offsets: # this is optional, might not be important
                         channel_offset_dict = np.load(os.path.join(session_path,'channel_offset.npy'),allow_pickle=True).tolist()
@@ -210,7 +216,7 @@ def suite2p_to_npy(suite2p_path,
                     dff_trialwise_closed_loop =  np.ones((max_frames, F.shape[0], len(closed_loop_filenames)))*np.nan
 
                     counter = 0
-                    for i, filename in enumerate(all_si_filenames):
+                    for i, filename in tqdm(enumerate(all_si_filenames)):
                         start_frame = filename_start_frame[i]
                         end_frame = filename_start_frame[i+1]
                         
