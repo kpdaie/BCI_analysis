@@ -298,8 +298,7 @@ def suite2p_to_npy(suite2p_path,
                                 'photon_counts' :photon_counts_dict,
                                 'f0_scalar':f0_scalar
                             }
-                    #%%
+                    #%
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
-
 
