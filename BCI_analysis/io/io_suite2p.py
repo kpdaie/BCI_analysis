@@ -2,15 +2,133 @@
 import numpy as np
 import os
 import json
-from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
+try:
+    from ..pipeline.pipeline_imaging import find_conditioned_neuron_idx
+except:
+    from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
 from tqdm import tqdm
 
-def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_num, fs, align_on = "go_cue", go_cue_times=None, reward_times=None, max_frames=None, frames_after=None, frames_before=None):
+def trial_times_to_session_indices (all_trial_frame_nums,
+                                    all_trial_names,
+                                    trial_names_with_event,
+                                    trial_event_times,
+                                    frame_rate):
+    """
+    Calculates indices of events of a concatenated from trial-wise event times.
+
+    Parameters
+    ----------
+    all_trial_frame_nums : list/array of int
+        frame number of each trial in the session
+    all_trial_names : list/array of str
+        file name of each trial in the session
+    trial_names_with_event : list/array of str
+        file name of trials with "trial_event_times" variable in the session.
+    trial_event_times : list of array of floats
+        time from trial start 
+    frame_rate : float
+        sampling rate
+
+    Returns
+    -------
+    event_indices : list of int
+        frame number of each event
+        
+        
+    Example
+    -------
+    import BCI_analysis
+    file_path = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/sessionwise_tba/BCI_26/BCI_26-060722-FOV_06.npy'
+    data_dict = BCI_analysis.io_python.read_sessionwise_npy(file_path)
+    all_trial_frame_nums = data_dict['all_si_frame_nums']
+    all_trial_names=data_dict['all_si_filenames']
+    trial_names_with_event = data_dict['closed_loop_filenames']
+    trial_event_times = data_dict['go_cue_times']
+    frame_rate = data_dict['sampling_rate']
+    event_indices = trial_times_to_session_indices(all_trial_frame_nums,
+                                                   all_trial_names,
+                                                   trial_names_with_event,
+                                                   trial_event_times,
+                                                   frame_rate)
+    """
+    all_trial_start_frames = np.asarray([0] + np.cumsum(all_trial_frame_nums))[:-1]
+    
+    event_indices = []
+    for trial_i, (trial_name,event_times) in enumerate(zip(trial_names_with_event,trial_event_times)):
+        trial_start_idx = all_trial_start_frames[np.where(trial_name == np.asarray(all_trial_names))[0][0]]
+        print(trial_start_idx)
+        for t in event_times:
+            event_indices.append(trial_start_idx+int(t*frame_rate))
+    return event_indices
+            
+        
+def align_trace_to_event(F,
+                         event_indices,
+                         frames_before,
+                         frames_after):
+    """
+    Creates an event-locked array of traces with given size
+
+    Parameters
+    ----------
+    F : matrix of float
+        sessionwise fluorescence
+    event_indices : list of int
+        indices of events (output of trial_times_to_session_indices )
+    frames_before : int
+        number of frames to keep before event
+    frames_after : int
+        number of frames to keep after event.
+
+    Returns
+    -------
+    F_aligned : matrix of float (frames * cells * trials)
+        trial-locked matrix
+
+    """
+    max_frames= frames_before+frames_after
+    F_aligned = np.ones((max_frames, F.shape[0], len(event_indices)))*np.nan
+    
+    for i, center_idx in enumerate(event_indices):
+
+        start_frame = center_idx - frames_before
+        end_frame = center_idx + frames_after
+        if end_frame > F.shape[1]:
+            end_frame = F.shape[1]
+        if end_frame - start_frame > frames_after:
+            end_frame = start_frame + frames_after
+        start_frame = start_frame - frames_before # taking 40 time points before trial starts
+        if start_frame<0: # taking care of edge at the beginning
+            missing_frames_at_beginning = np.abs(start_frame)
+            start_frame = 0
+        else:
+            missing_frames_at_beginning = 0
+        F_aligned[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, i] = F[:, start_frame:end_frame].T
+    return F_aligned
+
+    
+
+
+def sessionwise_to_trialwise(F, 
+                             all_si_filenames, 
+                             closed_loop_filenames,
+                             frame_num,
+                             fs,
+                             align_on = "go_cue", 
+                             go_cue_times=None, 
+                             reward_times=None, 
+                             max_frames=None, 
+                             frames_after=None, 
+                             frames_before=None):
     """
     this function does not care if there is a movie for the trial or not, handle this somewhere else
     """
-
-    if align_on == "go_cue" or align_on=="reward" or align_on=="trial_start":
+    align_keys = ['go_cue','reward','trial_start']
+    if align_on not in align_keys:
+        print('select reference (align_on) from this list: {}'.format(align_keys))
+        output = None
+        
+    else:
 
         # if not (frames_after  or frames_before):
         #     print("Aligning with go_cue or trial_start requires frame numbers to take")
@@ -40,9 +158,6 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                 F_trialwise_closed_loop.append(F[:, start_frame:end_frame].T)
                 counter += 1
 
-            return F_trialwise_closed_loop
-
-
         else:
             max_frames = frames_after + frames_before
             F_trialwise_closed_loop = np.ones((max_frames, F.shape[0], len(closed_loop_filenames)))*np.nan
@@ -71,8 +186,10 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                     missing_frames_at_beginning = 0
                 F_trialwise_closed_loop[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
                 counter += 1
+                
+        output = F_trialwise_closed_loop
 
-            return F_trialwise_closed_loop
+    return output
 
 
 
@@ -301,4 +418,5 @@ def suite2p_to_npy(suite2p_path,
                     #%
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
+
 
