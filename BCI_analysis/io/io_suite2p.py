@@ -51,7 +51,7 @@ def trial_times_to_session_indices (all_trial_frame_nums,
                                                    trial_event_times,
                                                    frame_rate)
     """
-    all_trial_start_frames = np.asarray([0] + np.cumsum(all_trial_frame_nums))[:-1]
+    all_trial_start_frames = np.asarray(np.concatenate([[0] , np.cumsum(all_trial_frame_nums)]))[:-1]
     
     event_indices = []
     for trial_i, (trial_name,event_times) in enumerate(zip(trial_names_with_event,trial_event_times)):
