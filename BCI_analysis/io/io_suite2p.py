@@ -97,7 +97,7 @@ def align_trace_to_event(F,
             end_frame = F.shape[1]
         if end_frame - start_frame > frames_after:
             end_frame = start_frame + frames_after
-        start_frame = start_frame - frames_before # taking 40 time points before trial starts
+        
         if start_frame<0: # taking care of edge at the beginning
             missing_frames_at_beginning = np.abs(start_frame)
             start_frame = 0
