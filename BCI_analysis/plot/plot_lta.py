@@ -1,18 +1,17 @@
 # %%
 import os
 from BCI_analysis.pipeline.pipeline_align import get_aligned_data
-from BCI_analysis.io_bci.io_suite2p import suite2p_to_npy
 
+import seaborn as sns
 import matplotlib.colors as cl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import sys
-from tqdm import tqdm
 
 from BCI_analysis.plot.plot_utils import rollingfun
 
-norm_cl = cl.TwoSlopeNorm(vmin=-1.0, vcenter=0, vmax=1.0)
+cmap_cl = 'bwr'
+norm_cl = cl.TwoSlopeNorm(vmin=-5.0, vcenter=0, vmax=5.0)
 
 def segment(arr, max=20):
     """
@@ -175,15 +174,56 @@ def dlc_approx_reward_time(lport, rt):
 
     return rtrel_dlc
 
-def plot_trace(dff_mean, dff_sd, indices=None, dim=(2,4)):
+def plot_trace(dff_mean, dff_sd, session=None, indices=None, dim=(2,4), ax=None):
 
-    fig = plt.figure(figsize=tuple(i * 4 for i in dim)[::-1])
-    for i, id in enumerate(indices):
-        ax = plt.subplot(*dim, i + 1)
-        ax.plot(dff_mean[id])
-        ax.fill_between(np.arange(len(dff_mean[id])), dff_mean[id]-dff_sd[id], dff_mean[id]+dff_sd[id], alpha=0.2)
-    plt.show()
+    # fig = plt.figure(figsize=tuple(i * 4 for i in dim)[::-1])
+    color = None
+    if ax==None:
+        fig = plt.figure(figsize=(20, 12))
+        ax = plt.subplot(1, 1, 1)
+    for _, id in enumerate(indices):
+        # ax = plt.subplot(*dim, i + 1)
+        ax.plot(dff_mean[id], color=color)
+        ax.fill_between(np.arange(len(dff_mean[id])), dff_mean[id]-dff_sd[id], dff_mean[id]+dff_sd[id], alpha=0.2, color=color)
+        ax.set_title(f'Lick Triggered Neurons: {session}')
+        ax.set_ylabel(f"$\Delta$F/F")
+        ax.set_xlabel('Frames')
+    ax.axvline(x=1000, ymin=0.25, ymax=0.75, color='black', linestyle='--', label='Lick')
+    ax.legend()
+    save_path = os.path.join(plt_save_path, f'lta_example_traces-{session}')
+    if ax==None:
+        plt.savefig(save_path)
+        plt.show()
     
+def plot_daycompare(dffs, sems, sessions_list, indices, align_at='lick', dim=(2, 4)):
+    # fig = plt.figure(figsize=tuple(i * 4 for i in dim)[::-1])
+    # fig, ax = plt.figure(figsize=(10, 10))
+    color = None
+    for i, id in enumerate(indices):
+        # ax = plt.subplot(*dim, i + 1)
+        for sl in range(len(session_list)):
+            plt.plot(dffs[sl][id], color=color, label=f'{session_list[sl]}')
+            plt.fill_between(np.arange(len(dffs[sl][id])), dffs[sl][id]-sems[sl][id], dffs[sl][id]+sems[sl][id], alpha=0.2, color=color)
+
+        # ax.set_xlim([-0.5, 3])
+        plt.axvline(x=1000, ymin=0.25, ymax=0.75, color='black', linestyle='--', label='Lick')
+        # ax.set_title(f'Lick Triggered Neurons: {session}')
+        # ax.set_title(f'Neuron:{id}')
+        # if i == (dim[0]-1)*dim[1]:
+        #     ax.set_xlabel('Frames')
+        #     sns.despine(ax=ax)
+        #     ax.set_ylabel(f"$\Delta$F/F")
+        # else:
+        #     sns.despine(bottom=True, left=True, ax=ax)
+        #     plt.xticks([])
+        #     plt.yticks([])
+        # if i == dim[1]-1:
+        #     ax.legend()
+    save_path = os.path.join(plt_save_path, f'{align_at}-ta_example_traces-{session_list}')
+    # if ax==None:
+    # plt.savefig(save_path)
+    plt.show()
+
 
 def plot_population_lta(suite2p_path,
                         dlc_base_dir,
@@ -196,7 +236,8 @@ def plot_population_lta(suite2p_path,
                         FOV="FOV_04",
                         camera="side",
                         session="041022",
-                        plot=True):
+                        plot=True,
+                        overwrite=False):
     """
     This function plots and saves the plot to lick triggered population average. We take population
     activity nearby licks throughout the session and then average over the licks. We then plot a
@@ -220,7 +261,7 @@ def plot_population_lta(suite2p_path,
 
     dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
             sessionwise_data_path, aligned_data_path, mouse, 
-            FOV, camera, session, plot=False, overwrite=False)
+            FOV, camera, session, plot=False, overwrite=overwrite)
 
     if dict_aligned is None:
         return
@@ -283,7 +324,7 @@ def plot_population_lta(suite2p_path,
 
     elif align_at == "PawL" or "PawR" or "EyeDown" or "EyeRight":
         global norm_cl 
-        norm_cl = cl.TwoSlopeNorm(vmin=-0.1, vmax=0.1, vcenter=0)
+        norm_cl = cl.TwoSlopeNorm(vmin=-1, vmax=1, vcenter=0)
         changetimes = []
         for i in range(len(c_lengths)-1):
             DLC_paw = DLC_aligned[align_at]["x"][c_lengths[i]:c_lengths[i+1]]
@@ -311,9 +352,11 @@ def plot_population_lta(suite2p_path,
     dff_sd = np.std(dff_lw, axis=-1)
     sem = dff_sd/np.sqrt(dff_lw.shape[2])
     dff_avg = np.mean(dff_lw, axis=-1)
-    dff_avg = dff_avg - np.mean(dff_avg[:, :tframes//4], axis=1, keepdims=True)
+    dff_avg = dff_avg - np.mean(dff_avg[:, :tframes//2], axis=1, keepdims=True)
 
     means = np.mean(dff_avg[:, tframes//2:tframes//2+500], axis=1) - np.mean(dff_avg[:, tframes//2-500:tframes//2], axis=1)
+    # plt.hist(means, bins=100)
+    # plt.show()
     sorted_m = np.argsort(means)[::-1]
     cn_sorted = np.argwhere(sorted_m == cn)
 
@@ -321,7 +364,7 @@ def plot_population_lta(suite2p_path,
     if plot == True:
         plt.figure(figsize=(16, 8))
         plt.subplot(121)
-        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap='seismic', norm=norm_cl)
+        plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap=cmap_cl, norm=norm_cl)
         plt.axvline(x=tframes//2, color='black')
         plt.yticks(cn_sorted[0], [f'{cn}: CN'])
         plt.title(f'{mouse}-{session}')
@@ -339,9 +382,9 @@ def plot_population_lta(suite2p_path,
         print(f"saved to {save_path}")
         plt.show()
 
-        plot_trace(dff_avg, sem, indices=sorted_m[:8], dim=(4, 2))
+        plot_trace(dff_avg, sem, session, indices=sorted_m[-8:], dim=(4, 2))
     
-    return dff_avg, sorted_m
+    return dff_avg, sem, sorted_m
 
 def linear_regression(suite2p_path,
                     dlc_base_dir,
@@ -376,17 +419,28 @@ def plot_sessionwise_change(suite2p_path,
     delta_change = []
     dffs = []
     sorts = []
+    sems = []
     for session in session_list:
-        dff_avg, sorted_m = plot_population_lta(suite2p_path, dlc_base_dir, 
+        dff_avg, sem, sorted_m = plot_population_lta(suite2p_path, dlc_base_dir, 
                             bpod_path, sessionwise_data_path, plt_save_path, 
                             aligned_data_path, align_at, mouse, FOV, camera, session, plot=False)
         
         dffs.append(dff_avg)
+        sems.append(sem)
         sorts.append(sorted_m)
-        print(session)
+        print(session, sorted_m[:10])
 
     tframes = 2000
     means = [np.sum(k, axis=1) for k in dffs]
+
+    # fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, figsize=(20, 10))
+    # plot_trace(dffs[0], sems[0], session_list[0], sorts[0][:10], ax=ax1)
+    # plot_trace(dffs[1], sems[1], session_list[1], sorts[0][:10], ax=ax2)
+    # save_path = os.path.join(plt_save_path, f'lta_example_traces-{session_list}')
+    # plt.savefig(save_path)
+    # plt.show()
+
+    plot_daycompare(dffs, sems, session_list, sorts[0][:10], dim=(2, 5), align_at=align_at)
 
     # print(np.mean(delta_change[0]), np.mean(delta_change[1]))
     # plt.scatter(delta_change[0], delta_change[1], marker='.', alpha=0.4, c='black')
@@ -395,16 +449,23 @@ def plot_sessionwise_change(suite2p_path,
     # plt.ylabel(f'{session_list[1]}')
     # plt.show()
 
-    fig, axes = plt.subplots(1, len(session_list), figsize=(16, 8))
+    fig, axes = plt.subplots(1, len(session_list), figsize=(16, 8), sharey=True)
     for i, session in enumerate(session_list):
-        im = axes[i].imshow(dffs[i][sorts[0]], aspect="auto", cmap='seismic', norm=norm_cl)
+        if i == 0:
+            axes[i].set_ylabel(f'Neurons')
+            axes[i].set_xlabel(f'Frames')
+        else:
+            axes[i].set_yticks([])
+            axes[i].set_xticks([])
+        sns.despine(bottom=True, left=True)
+        im = axes[i].imshow(dffs[i][sorts[0]], aspect="auto", cmap=cmap_cl, norm=norm_cl)
         axes[i].axvline(x=tframes//2, color='black')
         # plt.yticks(cn_sorted[0], [f'{cn}: CN'])
         axes[i].set_title(f'{mouse}-{session_list[i]}')
 
     plt.tight_layout()
     fig.subplots_adjust(right=0.8)
-    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    cbar_ax = fig.add_axes([0.85, 0.10, 0.02, 0.8])
     fig.colorbar(im, cax=cbar_ax)
     # fig.colorbar(im, ax=axes.ravel().tolist())
     os.makedirs(os.path.join(plt_save_path, mouse), exist_ok=True)
@@ -423,8 +484,8 @@ if __name__ == "__main__":
     aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_aligned")
 
 
-    mouse = "BCI_29"
-    FOV = "FOV_03"
+    mouse = "BCI_26"
+    FOV = "FOV_04"
     camera = "side"
     align_at = "reward"
 # session_list = ["041322", "041322_2"]
@@ -444,17 +505,17 @@ if __name__ == "__main__":
 # session_list = ["041922", "042022"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 
-    session_list = ["050422", "050522", "050622"]
+    session_list = ["041022", "041122"]
     plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, align_at, mouse, FOV, camera, session_list)
 
 # session_list = ["042722", "042822"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
 # session_list = ["041922", "042022", "042122", "042222", "042722", "042822", "042922"]
 # plot_sessionwise_change(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, plt_save_path, aligned_data_path, mouse, FOV, camera, session_list)
-# for session in session_list:
-#     plot_population_lta(suite2p_path, dlc_base_dir, 
-#                         bpod_path, sessionwise_data_path, plt_save_path, 
-#                         aligned_data_path, mouse, FOV, camera, session, plot=False)
+    # for session in ["041222", "041222_2", "041322"]:
+    #     plot_population_lta(suite2p_path, dlc_base_dir,
+    #                         bpod_path, sessionwise_data_path, plt_save_path,
+    #                         aligned_data_path, align_at, mouse, FOV, camera, session, overwrite=True)
 
     # session = "050422"
     # plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path,
@@ -462,7 +523,7 @@ if __name__ == "__main__":
 
     # bpod_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/")
     # suite2p_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/")
-    # mice_name = "BCI_29"
+    # mice_name = "BCI_26"
     # raw_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/")
     # save_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/bucket/Data/Calcium_imaging/sessionwise_tba")
-    # suite2p_to_npy(suite2p_path, raw_data_path, bpod_path, save_path, overwrite=True, fov_list=["FOV_04", "FOV_05"], mice_name = mice_name)
+    # suite2p_to_npy(suite2p_path, raw_data_path, bpod_path, save_path, overwrite=True, mice_name = mice_name)

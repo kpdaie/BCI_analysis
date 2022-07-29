@@ -1,7 +1,6 @@
 #%%
-import sys
+from datetime import datetime
 import argparse
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as cl
 import numpy as np
@@ -34,6 +33,11 @@ aligned_data_path = os.path.abspath("/home/labadmin/Github/BCI_analysis/data_ali
 def pc_dataframe(DLC_aligned: pd.DataFrame, drop_pole=False) -> pd.DataFrame:
 
     dlc_cpy = DLC_aligned.copy(deep=True)
+
+    for bp in ["TongueTip", "TongueMid"]:
+        dlc_cpy.loc[:, (bp, "x")].mask(dlc_cpy.loc[:, (bp, "likelihood")] < 0.9, 0,  inplace=True)
+        dlc_cpy.loc[:, (bp, "y")].mask(dlc_cpy.loc[:, (bp, "likelihood")] < 0.9, 0,  inplace=True)
+
     dlc_cpy.drop('likelihood', level=1, axis=1, inplace=True)
     bodyparts = DLC_aligned.columns.levels[0]
     for bp in bodyparts:
@@ -45,26 +49,29 @@ def pc_dataframe(DLC_aligned: pd.DataFrame, drop_pole=False) -> pd.DataFrame:
             dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
             dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
             continue
-        if bp == 'EyeLeft' and drop_pole == True:
-            dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
-            dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
-            continue
+        # if bp == 'EyeLeft' and drop_pole == True:
+        #     dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
+        #     dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
+        #     continue
         if bp == 'EyeDown' and drop_pole == True:
             dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
             dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
             continue
-        if bp == 'EyeRight' and drop_pole == True:
-            dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
-            dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
-            continue
+        # if bp == 'Lickport' and drop_pole == True:
+        #     dlc_cpy.drop((bp, 'x'), axis=1, inplace=True)
+        #     dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
+        #     continue
         pca = PCA(n_components=2)
         X_t = pca.fit_transform(dlc_cpy[bp].values)
         print(f"{bp}: {pca.explained_variance_ratio_}")    
         if pca.explained_variance_ratio_[0] > 0.6:
             dlc_cpy.drop((bp, 'y'), axis=1, inplace=True)
             dlc_cpy.loc[:, (bp, 'x')] = X_t[:, 0].reshape(-1, 1)
-    print(dlc_cpy.columns.levels[0])
+    print(dlc_cpy.columns)
     return dlc_cpy
+
+def cn_regression_comparison(session_list):
+    raise NotImplementedError
 
 def linear_regression(F_aligned, DLC_aligned):
 
@@ -96,7 +103,8 @@ def normalize_and_window(DLC_aligned, F_aligned, start, end, window, save=False)
     print(f"Normalize F and Apply a sliding window of {window}")
     for neu in tqdm(range(F_aligned.shape[0])):
         temp = normalize.fit_transform(F_aligned[neu, start:end].reshape(-1, 1))
-        F_aligned_n[neu] = rollingfun(temp, window=window).flatten()
+        # F_aligned_n[neu] = rollingfun(temp, window=window).flatten()
+        F_aligned_n[neu] = temp
 
 
     print(dlc_cpy)
@@ -104,7 +112,7 @@ def normalize_and_window(DLC_aligned, F_aligned, start, end, window, save=False)
     return dlc_cpy, F_aligned_n
 
 
-def apply_lr_plot(DLC_aligned, F_aligned, cn, scores=None, beta_vals=None, intercept=None, start=50000, end=150000, window=200):
+def apply_lr_plot(DLC_aligned, F_aligned, cn, scores, beta_vals, intercept, sorted_s = None, start=50000, end=150000, window=200):
 
 #     DLC_aligned_n, F_aligned_n = normalize_and_window(DLC_aligned, F_aligned, start, end, window)
 # #%%
@@ -119,26 +127,33 @@ def apply_lr_plot(DLC_aligned, F_aligned, cn, scores=None, beta_vals=None, inter
     ax[0,0].set_title(f'{end-start} timepoints, score {scores[cn]:0.2f}')
     ax[0,0].set_xlabel("Time")
     ax[0,0].set_ylabel("Normalized F")
-# ax[0].set_xlim([0, 30000])
+    ax[0,0].set_xlim([start, end])
     ax[0,0].legend()
 
+    if len(sorted_s) == 0:
+        sorted_s = np.argsort(scores)[::-1]
     ax[0,1].hist(scores, bins=100)
     ax[0,1].set_xlabel("LR score")
     ax[0,1].set_ylabel("Number of neurons")
 
-    ax[1,0].imshow(beta_vals*(np.abs(beta_vals)>0.1), norm=cl.TwoSlopeNorm(0), cmap='seismic', aspect='auto')
-    ax[1,0].set_xticks(np.arange(0, DLC_aligned_n.shape[1]), DLC_aligned_n.columns.values, rotation ='vertical')
+    ax[1,0].imshow(beta_vals*(np.abs(beta_vals)>0.1)[sorted_s], norm=cl.TwoSlopeNorm(vmin=-1, vcenter=0, vmax=1), cmap='seismic', aspect='auto')
+    ax[1,0].set_xticks(np.arange(0, DLC_aligned_n.shape[1]), DLC_aligned_n.columns.levels[0].values, rotation ='vertical')
+    ax[1,0].set_ylabel("Neurons")
 # %%
 
-    im = ax[1,1].imshow(np.expand_dims(beta_vals[cn], axis=0), norm=cl.TwoSlopeNorm(0), cmap='seismic', aspect='auto')
-    ax[1,1].set_xticks(np.arange(0, DLC_aligned_n.shape[1]), DLC_aligned_n.columns.values, rotation ='vertical')
+    im = ax[1,1].imshow(np.expand_dims(beta_vals[cn], axis=0), norm=cl.TwoSlopeNorm(vmin=-1, vcenter=0, vmax=1), cmap='seismic', aspect='auto')
+    ax[1,1].set_xticks(np.arange(0, DLC_aligned_n.shape[1]), DLC_aligned_n.columns.levels[0].values, rotation ='vertical')
     ax[1,1].set_title(f"cn = {cn}")
     cbar = plt.colorbar(im)
+    # cbar.set_ticks([-1, 0, 1])
+    ax[1,1].set_yticks([])
 
-    save_path = os.path.join(plt_save_path, f"{mouse}-{session}-{camera}-{FOV}-window={window}")
+    save_path = os.path.join(plt_save_path, f"{mouse}-{session}-{camera}-{FOV}-window={window}-sorted-cn={cn}")
     plt.tight_layout()
     plt.savefig(save_path)
-    plt.show(block=False)
+    # plt.show(block=False)
+    
+    return sorted_s
 
 # %%
 
@@ -196,29 +211,36 @@ def corrfunc(x, y, hue=None, ax=None, **kws):
     ax = ax or plt.gca()
     ax.annotate(f'ρ = {r:.2f}', xy=(.1, .9), xycoords=ax.transAxes)
 
+def hide_current_axis(*args, **kwds):
+    plt.gca().set_visible(False)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str, default=None) 
     parser.add_argument('--save', type=str, default=None) 
     parser.add_argument('--apply_lr', type=str, default=False)
+    parser.add_argument('--only_diag', type=bool, default=False)
+    parser.add_argument("--compare_sessions", nargs="+")
     args = parser.parse_args()
-    mouse = "BCI_26"
-    FOV = "FOV_04"
+    mouse = "BCI_29"
+    FOV = "FOV_02"
     camera = "side"
     session = "041022"
     
     print(args.path)
     if args.path:
+        mouse = args.path.split("/")[-2]
+        session = args.path.split("/")[-1].split("-")[0]
         a = np.load(args.path, allow_pickle=True)
         ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
 
         DLC_aligned_n = pd.DataFrame.from_dict(a["DLC_aligned_n"].item())
-        # F_aligned_n = a['F_aligned_n']
+        F_aligned_n = a['F_aligned_n']
         # dlc_cpy = a['dlc_cpy']
-        # scores = a['scores']
-        # beta_vals = a['beta_vals']
-        # intercept = a['intercept']
+        scores = a['scores']
+        beta_vals = a['beta_vals']
+        intercept = a['intercept']
         cn = ca_data['cn'][0]
         dlc_headers = a['dlc_headers']
         print(dlc_headers)
@@ -227,84 +249,136 @@ if __name__ == "__main__":
         # sliding_fit(DLC_aligned_n, F_aligned_n, normalize=False, window=200, slide=[-2000, -1000, 0, 1000, 2000])
         good_neuron = cn
         # fig, ax = plt.subplots(len(dlc_headers)+1, 1, figsize=(16,12), sharex=True)
-
+        #
         # ax[0].plot(F_aligned_n[good_neuron, :])
         # for i, bp in enumerate(np.argsort(np.abs(beta_vals[good_neuron]))[::-1]):
-        #     ax[i+1].plot(dlc_cpy[:, bp], label=f"beta_val = {beta_vals[good_neuron, bp]:0.3f}")
-        #     ax[i+1].set_ylabel(f"{dlc_headers[bp]}", rotation='horizontal', ha='right')
+        #     print(bp)
+        #     ax[i+1].plot(DLC_aligned_n.iloc[:, bp], label=f"beta_val = {beta_vals[good_neuron, bp]:0.3f}")
+        #     ax[i+1].set_ylabel(f"{dlc_headers[bp][0]}", rotation='horizontal', ha='right')
         #     ax[i+1].legend()
+        # # plt.suptitle(f"{mouse}-{session}")
+        # plt.xlim([0, 100000])
+        # # plt.tight_layout()
+        # plt.savefig(os.path.join(plt_save_path, f"{mouse}-{session}-{good_neuron}-lin_reg"))
         # plt.show()
-        # print(DLC_aligned_n)
-        plt.figure()
-        
-        # g = sns.pairplot(DLC_aligned_n.loc[:100000])
-        p = 30000
-        DLC_aligned_n.columns = ['-'.join(DLC_aligned_n.columns.to_flat_index()[i]) for i in range(len(DLC_aligned_n.columns))]
         print(DLC_aligned_n)
+        plt.figure(figsize=(20, 20))
+        # g = sns.pairplot(DLC_aligned_n.loc[:100000])
+        p = 50000
+        DLC_aligned_n.columns = [DLC_aligned_n.columns.to_flat_index()[i][0] for i in range(len(DLC_aligned_n.columns))]
+        print(DLC_aligned_n)
+        # DLC_aligned_n.plot.hist(subplots=True, legend=True, bins=400, range=(-2, 2), layout=(3, len(DLC_aligned_n.columns)//3), color='0.3')
         g = sns.PairGrid(DLC_aligned_n.sample(p), palette="crest")
-        g.map_upper(plt.scatter, s=0.1)
         g.map_diag(sns.histplot, kde=True, color='0.3')
-        g.map_lower(sns.kdeplot, cmap="Blues_d", fill=True)
-        g.map_lower(corrfunc)
+        if args.only_diag:
+            g.map_upper(hide_current_axis)
+            # g.map_lower(hide_current_axis)
+        else:
+            g.map_upper(plt.scatter, s=0.1)
+            g.map_lower(sns.kdeplot, cmap="Blues_d")
+            g.map_lower(corrfunc)
+        g.fig.suptitle(f"{mouse}-{session}-{p}")
         for ax in g.axes.flatten():
             ax.set_ylabel(ax.get_ylabel(), rotation = 60)
             ax.set_xlabel(ax.get_xlabel(), rotation = 0)
-        # plt.savefig("fancy_plot")
+
+        currdt = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+        plt.savefig(os.path.join(plt_save_path, f"{mouse}-{session}-{p}-{args.only_diag}-{currdt}"))
         plt.tight_layout()
+        plt.savefig(os.path.join(plt_save_path, f"{mouse}-{session}-histogram"))
         plt.show()
 
 
     if args.save:
-        mouse = "BCI_26"
-        FOV = "FOV_04"
+        mouse = "BCI_29"
         camera = "side"
-        session = args.save
-        dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
-                sessionwise_data_path, aligned_data_path, mouse, 
-                FOV, camera, session, plot=False, overwrite=False)
+        for path in os.listdir(os.path.join(sessionwise_data_path, mouse)):
+            FOV = path.split("-")[-1][:-4]
+            session = path.split("-")[1]
+            if session != "042522":
+                continue
+            print(f"Saving {session}, {FOV}")
+            dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
+                    sessionwise_data_path, aligned_data_path, mouse, 
+                    FOV, camera, session, plot=False, overwrite=False)
 
-        if dict_aligned is None:
-            pass
-        dff_aligned = dict_aligned["dff_aligned"]
-        dff_aligned_s = np.hstack(dff_aligned)
-        DLC_aligned = pd.DataFrame.from_dict(dict_aligned["DLC_aligned"])
+            if dict_aligned is None:
+                pass
+            dff_aligned = dict_aligned["dff_aligned"]
+            dff_aligned_s = np.hstack(dff_aligned)
+            DLC_aligned = pd.DataFrame.from_dict(dict_aligned["DLC_aligned"])
 
-        ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
-        start = 0
-        end = DLC_aligned.shape[0]
-        window = 10
+            ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
+            start = 0
+            end = DLC_aligned.shape[0]
+            window = 200
 
-        DLC_aligned_n, dff_aligned_n = normalize_and_window(DLC_aligned, dff_aligned_s, start, end, window)
-        scores, beta_vals, intercept = linear_regression(dff_aligned_n, DLC_aligned_n)
+            DLC_aligned_n, dff_aligned_n = normalize_and_window(DLC_aligned, dff_aligned_s, start, end, window)
+            scores, beta_vals, intercept = linear_regression(dff_aligned_n, DLC_aligned_n)
 
-        t = time.localtime()
-        current_time = time.strftime("%H%M%S", t)
-        os.makedirs(os.path.join(plt_save_path, "use_data", mouse), exist_ok=True)
-        save_path = os.path.join(plt_save_path, "use_data", mouse, f"{session}-window{window}-{end}")
-        np.savez(save_path, DLC_aligned_n=DLC_aligned_n.to_dict(), F_aligned_n=dff_aligned_n, dlc_headers=np.asarray(DLC_aligned_n.columns.values), scores=scores, beta_vals=beta_vals, intercept=intercept)
+            t = time.localtime()
+            current_time = time.strftime("%H%M%S", t)
+            os.makedirs(os.path.join(plt_save_path, "use_data", mouse), exist_ok=True)
+            save_path = os.path.join(plt_save_path, "use_data", mouse, f"{session}-window{window}-{end}-{DLC_aligned_n.shape[1]}-lickport-eyerl")
+            np.savez(save_path, DLC_aligned_n=DLC_aligned_n.to_dict(), F_aligned_n=dff_aligned_n, dlc_headers=np.asarray(DLC_aligned_n.columns.values), scores=scores, beta_vals=beta_vals, intercept=intercept, cn=dict_aligned['cn'])
 
     if args.apply_lr:
 
-        mouse = "BCI_26"
-        FOV = "FOV_04"
-        camera = "side"
-        session = "041022"
-        a = np.load(args.apply_lr, allow_pickle=True)
-        ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
+        # mouse = args.apply_lr.split("/")[-2]
+        # session = args.apply_lr.split("/")[-1].split("-")[0]
+        mouse = "BCI_29"
+        adp = "/home/labadmin/Github/BCI_analysis/Plots/use_data/BCI_29"
+        path = ["042522-window200-824726.npz", "042722-window200-620235.npz", "042822-window200-625892.npz"]
+        sorted_s = []
+        cn = 38
+        for i, session in enumerate(["042522", "042722", "042822"]):
+            FOV = "FOV_02"
+            camera = "side"
+            # a = np.load(args.apply_lr, allow_pickle=True)
+            a = np.load(os.path.join(adp, path[i]), allow_pickle=True)
+            ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
 
-        DLC_aligned_n = pd.DataFrame.from_dict(a["DLC_aligned_n"].item())
-        F_aligned_n = a['F_aligned_n']
-        scores = a['scores']
-        beta_vals = a['beta_vals']
-        intercept = a['intercept']
-        cn = ca_data['cn'][0]
-        dlc_headers = a['dlc_headers']
-        print(dlc_headers)
+            DLC_aligned_n = pd.DataFrame.from_dict(a["DLC_aligned_n"].item())
+            F_aligned_n = a['F_aligned_n']
+            scores = a['scores']
+            beta_vals = a['beta_vals']
+            intercept = a['intercept']
+            # cn = ca_data['cn'][0]
+            dlc_headers = a['dlc_headers']
+            print(dlc_headers)
 
-        start = 0
-        end = DLC_aligned_n.shape[0]
-        print(start, end)
-        window = 100
+            start = 0
+            end = 100000
+            print(start, end)
+            window = 100
 
-        # for window in [1, 10, 100, 200, 400, 1000]:
-        apply_lr_plot(DLC_aligned_n, F_aligned_n, cn, scores, beta_vals, intercept, window=200)
+            # for window in [1, 10, 100, 200, 400, 1000]:
+            sorted_s = apply_lr_plot(DLC_aligned_n, F_aligned_n, cn, scores, beta_vals, intercept, sorted_s=sorted_s, start=start, end=end, window=200)
+            print(sorted_s)
+
+    if args.compare_sessions:
+
+        for sess_path in args.compare_sessions:
+            mouse = sess_path.split("/")[-2]
+            FOV = "FOV_04"
+            camera = "side"
+            session = sess_path.split("/")[-1].split("-")[0]
+            a = np.load(sess_path, allow_pickle=True)
+            ca_data = np.load(os.path.join(sessionwise_data_path, mouse, "-".join([mouse, session, FOV])+".npy"), allow_pickle=True).tolist()
+
+            DLC_aligned_n = pd.DataFrame.from_dict(a["DLC_aligned_n"].item())
+            F_aligned_n = a['F_aligned_n']
+            scores = a['scores']
+            beta_vals = a['beta_vals']
+            intercept = a['intercept']
+            cn = ca_data['cn'][0]
+            dlc_headers = a['dlc_headers']
+
+            start = 0
+            end = DLC_aligned_n.shape[0]
+            window = sess_path.split("/")[-1].split("-")[1].replace('window', '')
+
+            print(window, session)
+            
+
+

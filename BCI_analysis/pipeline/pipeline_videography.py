@@ -1,6 +1,6 @@
 #%% load DLC traces and align to traces
 import numpy as np
-import os, json, re
+import os, json
 import pandas as pd
 import matplotlib.pyplot as plt
 

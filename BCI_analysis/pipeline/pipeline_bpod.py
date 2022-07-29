@@ -1,5 +1,3 @@
-from BCI_analysis import io_bci
-
 from pybpodgui_api.models.project import Project
 from scipy.io import savemat
 from pathlib import Path
