@@ -56,7 +56,7 @@ def trial_times_to_session_indices (all_trial_frame_nums,
     event_indices = []
     for trial_i, (trial_name,event_times) in enumerate(zip(trial_names_with_event,trial_event_times)):
         trial_start_idx = all_trial_start_frames[np.where(trial_name == np.asarray(all_trial_names))[0][0]]
-        print(trial_start_idx)
+        #print(trial_start_idx)
         for t in event_times:
             event_indices.append(trial_start_idx+int(t*frame_rate))
     return event_indices
