@@ -95,9 +95,6 @@ def align_trace_to_event(F,
         end_frame = center_idx + frames_after
         if end_frame > F.shape[1]:
             end_frame = F.shape[1]
-        if end_frame - start_frame > frames_after:
-            end_frame = start_frame + frames_after
-        
         if start_frame<0: # taking care of edge at the beginning
             missing_frames_at_beginning = np.abs(start_frame)
             start_frame = 0
