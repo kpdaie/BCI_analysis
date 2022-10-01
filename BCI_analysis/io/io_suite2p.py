@@ -8,6 +8,26 @@ except:
     from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
 from tqdm import tqdm
 
+def nan_helper(y):
+    """Helper to handle indices and logical indices of NaNs.
+
+    Input:
+        - y, 1d numpy array with possible NaNs
+    Output:
+        - nans, logical indices of NaNs
+        - index, a function, with signature indices= index(logical_indices),
+          to convert logical indices of NaNs to 'equivalent' indices
+    Example:
+        >>> # linear interpolation of NaNs
+        >>> nans, x= nan_helper(y)
+        >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+        
+    Source:
+        https://stackoverflow.com/questions/6518811/interpolate-nan-values-in-a-numpy-array
+    """
+
+    return np.isnan(y), lambda z: z.nonzero()[0]
+
 def trial_times_to_session_indices (all_trial_frame_nums,
                                     all_trial_names,
                                     trial_names_with_event,
@@ -417,3 +437,83 @@ def suite2p_to_npy(suite2p_path,
                     print(f"Saved to {session_save_path}")
 
 
+def remove_stim_artefacts(F,Fneu,frames_per_file):
+    """
+    removing stimulation artefacts with linear interpolation
+    and nan-ing out tripped PMT traces
+    Assumes that files start with photostim.
+
+    Parameters
+    ----------
+    F : matrix of float
+        Fluorescence of ROIs
+    Fneu : matrix of float
+        fluorescence of neuropil
+    frames_per_file : list of int
+        # of frames in each file (where the photostim happens)
+
+    Returns
+    -------
+    F : matrix of float
+        corrected fluorescence of ROIs
+    Fneu : matrix of float
+        corrected fluorescence of neuropil
+
+    """
+    artefact_indices = []
+    fneu_mean = np.mean(Fneu,0)
+    file_start_indices = np.concatenate([[0],np.cumsum(frames_per_file)[:-1]])
+    fneu_aligned = align_trace_to_event(Fneu,
+                                          file_start_indices,
+                                          1,
+                                          20)
+    fneu_aligned_mean = np.nanmean(fneu_aligned, axis = (1,2))
+    offset = np.argmax(fneu_aligned_mean) - 1
+    print('photostim offset from trial start is {} frames'.format(offset))
+    for stim_idx in file_start_indices:
+        idx_now = []
+        if stim_idx>0:# and fneu_mean[stim_idx-2]*1.1<fneu_mean[stim_idx-1]:
+            idx_now.append(stim_idx-1)
+        if stim_idx>1 and fneu_mean[stim_idx-3]*1.1<fneu_mean[stim_idx-2]:
+            idx_now.append(stim_idx-2)
+        idx_now.append(stim_idx)
+        if stim_idx<len(fneu_mean)-2:# and fneu_mean[stim_idx+2]*1.1<fneu_mean[stim_idx+1]:
+            idx_now.append(stim_idx+1)
+        if stim_idx<len(fneu_mean)-3 and fneu_mean[stim_idx+3]*1.1<fneu_mean[stim_idx+2]:
+            idx_now.append(stim_idx+2)
+        artefact_indices.append(idx_now)
+    
+    f_std = np.std(F,0)
+    pmt_off_indices = f_std<np.median(f_std)-3*np.std(f_std)
+    pmt_off_edges = np.diff(np.concatenate([pmt_off_indices,[0]]))
+    pmt_off_indices[pmt_off_edges!=0] = 1 #dilate 1
+    pmt_off_edges = np.diff(np.concatenate([[0],pmt_off_indices,[0]]))
+    starts = np.where(pmt_off_edges==1)[0]
+    ends = np.where(pmt_off_edges==-1)[0]
+    lengths = ends-starts
+    for idx in np.where(lengths<=10)[0]:
+        pmt_off_indices[starts[idx]:ends[idx]]=0
+    pmt_off_edges = np.diff(np.concatenate([[0],pmt_off_indices,[0]]))
+    starts = np.where(pmt_off_edges==1)[0]
+    ends = np.where(pmt_off_edges==-1)[0]   
+    for end_ in ends:
+        pmt_off_indices[end_:end_+10] = 1 # 10 extra frames are added at the end of pmt trips to be removed
+        
+    
+    
+    F_ = F.copy()
+    F_[:,np.concatenate(artefact_indices)]=np.nan
+    for f in F_:
+        nans, x= nan_helper(f)
+        f[nans]= np.interp(x(nans), x(~nans), f[~nans])
+        f[pmt_off_indices] = np.nan
+    F = F_
+    
+    Fneu_ = Fneu.copy()
+    Fneu_[:,np.concatenate(artefact_indices)]=np.nan
+    for f in Fneu_:
+        nans, x= nan_helper(f)
+        f[nans]= np.interp(x(nans), x(~nans), f[~nans])
+        f[pmt_off_indices] = np.nan
+    Fneu = Fneu_
+    return F, Fneu
