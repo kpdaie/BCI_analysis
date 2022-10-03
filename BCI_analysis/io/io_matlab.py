@@ -84,3 +84,20 @@ def read_multisession_mat(full_file_path):
                  }
     #%%
     return data_dict
+
+def read_multisession_mat_2022(full_file_path):
+    """
+    Reads the output of Kayvon's pipeline, multi-session .mat file as a dict.
+    
+   
+            
+    """
+    #%%
+    
+    file_path,file_name = os.path.split(full_file_path)
+    data = mat73.loadmat(full_file_path)['data']
+    
+        
+   
+    #%%
+    return data
