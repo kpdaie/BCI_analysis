@@ -10,6 +10,21 @@ from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise
 import json
 
 def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge'):
+    """
+    This function takes the dlc_data and converts the shape to target_length, using padding and mean using a mean_window
+    ----------
+    dlc_data: pd.Dataframe
+        DeepLabCut data for a neuron
+    target_length: int
+        Length to convert the array size to
+    mode: string
+        how to pad        
+
+    Returns
+    -------
+    dataframe: pd.Dataframe
+        dataframe of the desired target_length
+    """
     pad_width = target_length - dlc_data.shape[0]%target_length
     mean_window = (dlc_data.shape[0] + pad_width)//target_length
     bodyparts = list(dlc_data.columns.levels[0])
@@ -25,6 +40,20 @@ def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge')
     return df2
 
 def interpolate_ca_data(dlc_trial, F_trial, plot=False):
+    """
+    This function takes the dlc data for a trial and interpolates the data to the length of flouroscence trace
+    ----------
+    dlc_data: pd.Dataframe
+        DeepLabCut data for a neuron
+    F_trial: np.array
+        flouroscence trace for a trial
+    plot: bool 
+
+    Returns
+    -------
+    F_ret: np.array
+        flouroscence trace of the desired target length
+    """
     t = np.linspace(0, dlc_trial.shape[0], F_trial.shape[1])
     tnew = np.arange(0, dlc_trial.shape[0])
     F_ret = np.zeros((F_trial.shape[0], dlc_trial.shape[0]))
