@@ -299,6 +299,7 @@ def export_pybpod_files_core(bpod_session_dict,
                            'next_trial_index' : list(),
                            'scanimage_file_names':list(),
                            'scanimage_tiff_headers':list()}
+    skip_metadata = False
     for scanimage_fname, scanimage_timestamp,scanimage_metadata in zip(residual_filenames,residual_timestamps,residual_metadata):
         if type(scanimage_timestamp) == float:
             residual_tiff_files['triggered'].append(False)
@@ -326,7 +327,13 @@ def export_pybpod_files_core(bpod_session_dict,
         residual_tiff_files['previous_trial_index'].append( prev_trial_idx)
         residual_tiff_files['next_trial_index'].append( next_trial_idx)
         residual_tiff_files['scanimage_file_names'].append(scanimage_fname)
-        residual_tiff_files['scanimage_tiff_headers'].append(scanimage_metadata)
+        if 'slm' in scanimage_fname and not skip_metadata:
+            residual_tiff_files['scanimage_tiff_headers'].append(scanimage_metadata)
+            skip_metadata = True
+        elif 'slm' in scanimage_fname and skip_metadata:
+            residual_tiff_files['scanimage_tiff_headers'].append(None)
+        else:
+            residual_tiff_files['scanimage_tiff_headers'].append(scanimage_metadata)
     
     behavior_dict['residual_tiff_files'] = residual_tiff_files
     

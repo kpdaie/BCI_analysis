@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+import os
+from suite2p.registration.nonrigid import upsample_block_shifts
 def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = False):
     """
     This script matches the scanimage conditioned neuron to the suite2p ROI
@@ -25,14 +28,16 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
     
     Example
     -------
-    session_bpod_file = '/mnt/Data/Behavior/BCI_exported/KayvonScope/BCI_29/042922-bpod_zaber.npy'
-    session_ops_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/042922/ops.npy'
-    fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_29/FOV_02/stat.npy'
+    session_bpod_file = '/mnt/Data/Behavior/BCI_exported/KayvonScope/BCI_35/072122-bpod_zaber.npy'
+    session_ops_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_35/FOV_05/072122/ops.npy'
+    fov_stats_file = '/home/rozmar/Network/GoogleServices/BCI_data/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/BCI_35/FOV_05/stat.npy'
     cond_s2p_idx,closed_loop_trial,scanimage_filenames = find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = True)
     """
     behavior_dict = np.load(session_bpod_file,allow_pickle = True).tolist()
     ops =  np.load(session_ops_file,allow_pickle = True).tolist()
+    meanimg_dict = np.load(os.path.join(os.path.dirname(session_ops_file),'mean_image.npy'),allow_pickle = True).tolist()
     stat =  np.load(fov_stats_file,allow_pickle = True).tolist()
+    
     conditioned_neuron_name_list = []
     roi_indices = []
     closed_loop_trial = []
@@ -57,13 +62,21 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
                 rois = [rois]
             roinames_list = list() 
             for roi in rois:
-                roinames_list.append(roi['name'])
+                try:
+                    roinames_list.append(roi['name'])
+                except:
+                    roinames_list.append(None)
             try:
                 roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
             except:
-                print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
-                conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
-                roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+                try:
+                    print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
+                    conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
+                    roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+                except:
+                    print('no usable ROI idx, skipping')
+                    roi_idx = None
+                    
         else:
             conditioned_neuron_name  =''
             roi_idx = None
@@ -74,9 +87,8 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
             
         conditioned_neuron_name_list.append(conditioned_neuron_name)
         roi_indices.append(roi_idx)
-
-    x_offset = np.median(ops['xoff_list'][:100])
-    y_offset  =np.median(ops['yoff_list'][:100])
+    x_offset = np.median(ops['xoff_list'][:5000])
+    y_offset  =np.median(ops['yoff_list'][:5000])
     fovdeg = list()
     for s in metadata['metadata']['hRoiManager']['imagingFovDeg'].strip('[]').split(' '): fovdeg.extend(s.split(';'))
     fovdeg = np.asarray(fovdeg,float)
@@ -86,16 +98,67 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         rois = [rois]    
     centerXY_list = list()
     roinames_list = list()
-    Lx = float(metadata['metadata']['hRoiManager']['pixelsPerLine'])
-    Ly = float(metadata['metadata']['hRoiManager']['linesPerFrame'])
-    #
+    Lx = int(metadata['metadata']['hRoiManager']['pixelsPerLine'])
+    Ly = int(metadata['metadata']['hRoiManager']['linesPerFrame'])
+    yup,xup = upsample_block_shifts(Lx, Ly, ops['nblocks'], ops['xblock'], ops['yblock'], np.median(ops['yoff1_list'][:5000,:],0)[np.newaxis,:], np.median(ops['xoff1_list'][:5000,:],0)[np.newaxis,:])
+    xup=xup.squeeze()+x_offset 
+    yup=yup.squeeze()+y_offset 
+# =============================================================================
+#     plt.figure()
+#     img = plt.imshow(ops['meanImg'])#meanimg_dict['refImg_original'])
+#     img.set_clim(np.percentile(ops['meanImg'],[1,99]))
+# =============================================================================
     for roi in rois:
+        if 'name' not in roi.keys():
+            continue
         try:
-            centerXY_list.append((roi['scanfields']['centerXY']-fovdeg[0])/np.diff(fovdeg))
+            px,py = roi['scanfields']['centerXY']
+            if 'rotation_deg' in meanimg_dict.keys():
+                
+                angle = -1*np.mean(np.asarray([np.arccos(meanimg_dict['rotation_matrix'][0,0]),
+                                            np.arcsin(meanimg_dict['rotation_matrix'][1,0]),
+                                            -1*np.arcsin(meanimg_dict['rotation_matrix'][0,1]),
+                                            np.arccos(meanimg_dict['rotation_matrix'][1,1])]))
+                #print('offset: {} pixels, rotation {} degrees'.format([x_offset,y_offset], np.degrees(angle)))
+                ox = oy = 0
+                qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+                qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+            else:
+                qx = px
+                qy = py
+            coordinates_now = (np.asarray([qx,qy])-fovdeg[0])/np.diff(fovdeg)
+            #centerXY_list.append((roi['scanfields']['centerXY']-fovdeg[0])/np.diff(fovdeg))
         except:
             print('multiple scanfields for {}'.format(roi['name']))
-            centerXY_list.append((roi['scanfields'][0]['centerXY']-fovdeg[0])/np.diff(fovdeg))
+            px,py = roi['scanfields'][0]['centerXY']
+            if 'rotation_deg' in meanimg_dict.keys():
+                angle = -1*np.mean(np.asarray([np.arccos(meanimg_dict['rotation_matrix'][0,0]),
+                                            np.arcsin(meanimg_dict['rotation_matrix'][1,0]),
+                                            -1*np.arcsin(meanimg_dict['rotation_matrix'][0,1]),
+                                            np.arccos(meanimg_dict['rotation_matrix'][1,1])]))
+                print('rotating ROIs with {} degrees'.format(np.degrees(angle)))
+                ox = oy = 0
+                qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+                qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+            else:
+                qx = px
+                qy = py
+            coordinates_now =(np.asarray([qx,qy])-fovdeg[0])/np.diff(fovdeg)
+        #%
         
+        coordinates_now = coordinates_now[::-1] # go to yx
+        coordinates_now[0] = coordinates_now[0]*Ly
+        coordinates_now[1] = coordinates_now[1]*Lx
+
+        yoff_now = yup[int(coordinates_now[0]),int(coordinates_now[1])]
+        xoff_now = xup[int(coordinates_now[0]),int(coordinates_now[1])]
+        
+        #lt.plot(coordinates_now[1],coordinates_now[0],'ro')        
+        coordinates_now[0]-=yoff_now
+        coordinates_now[1]-=xoff_now
+        #plt.plot(coordinates_now[1],coordinates_now[0],'yo')
+
+        centerXY_list.append(coordinates_now[::-1]) # go back to xy
         roinames_list.append(roi['name'])
     cond_s2p_idx = list()
     for roi_idx_now in roi_indices:    
@@ -106,7 +169,7 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         dist_list = list()
         for cell_stat in stat:
             
-            dist = np.sqrt((centerXY_list[roi_idx_now-1][0]*Lx-x_offset-cell_stat['med'][1])**2+(centerXY_list[roi_idx_now-1][1]*Lx-y_offset-cell_stat['med'][0])**2)
+            dist = np.sqrt((centerXY_list[roi_idx_now-1][0]-cell_stat['med'][1])**2+(centerXY_list[roi_idx_now-1][1]-cell_stat['med'][0])**2)# - cell_stat['radius']
             dist_list.append(dist)
             med_list.append(cell_stat['med'])
             #break
@@ -127,6 +190,5 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
                 mask[roi_stat['ypix'],roi_stat['xpix']] = 1
             #break
         maskimg = ax_rois.imshow(mask)#,alpha = .5)    #cmap = 'hot',
-        ax_rois.plot(np.asarray(centerXY_list)[:,0]*Lx-x_offset,np.asarray(centerXY_list)[:,1]*Ly-y_offset,'ro')
-
+        ax_rois.plot(np.asarray(centerXY_list)[:,0],np.asarray(centerXY_list)[:,1],'ro')
     return cond_s2p_idx,closed_loop_trial,scanimage_filenames
