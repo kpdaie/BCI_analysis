@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import math
 import os
 from suite2p.registration.nonrigid import upsample_block_shifts
+from .pipeline_utils import nan_helper
 def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_file, plot = False):
     """
     This script matches the scanimage conditioned neuron to the suite2p ROI
@@ -193,3 +194,5 @@ def find_conditioned_neuron_idx(session_bpod_file,session_ops_file,fov_stats_fil
         maskimg = ax_rois.imshow(mask)#,alpha = .5)    #cmap = 'hot',
         ax_rois.plot(np.asarray(centerXY_list)[:,0],np.asarray(centerXY_list)[:,1],'ro')
     return cond_s2p_idx,closed_loop_trial,scanimage_filenames
+
+
