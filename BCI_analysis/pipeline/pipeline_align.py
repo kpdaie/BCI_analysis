@@ -9,9 +9,11 @@ from tqdm import tqdm
 from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise
 import json
 
-def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge'):
+def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, window=100, mode='edge'):
     """
-    This function takes the dlc_data and converts the shape to target_length, using padding and mean using a mean_window
+    This function takes the dlc_data and converts the shape to target_length, 
+    1. Calculates a moving standard deviation with a window
+    2. Downsample
     ----------
     dlc_data: pd.Dataframe
         DeepLabCut data for a neuron
@@ -26,17 +28,28 @@ def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, mode='edge')
         dataframe of the desired target_length
     """
     pad_width = target_length - dlc_data.shape[0]%target_length
-    mean_window = (dlc_data.shape[0] + pad_width)//target_length
-    bodyparts = list(dlc_data.columns.levels[0])
-    
     df2 = pd.DataFrame(0, index=range(target_length), columns=dlc_data.columns)
+    bodyparts = list(dlc_data.columns.levels[0])
+
     for bp in bodyparts:
         for dim in ["x", "y"]:
+            df_bp = dlc_data[bp][dim]
+            f_sd = df_bp.rolling(window=window).std()
+            pad_width = target_length - len(f_sd)%target_length
+            step_size = (len(f_sd) + pad_width)//target_length
             if mode=='zero':
-                list_bp = list(dlc_data[bp][dim]) + [0]*pad_width
-            elif mode=='edge':
-                list_bp = list(dlc_data[bp][dim]) + [np.mean(dlc_data[bp][dim][-3:])]*pad_width
-            df2[bp, dim] = np.asarray(list_bp).reshape(-1, mean_window).mean(axis=1)
+                f_sd =  f_sd.append(pd.Series([0]*pad_width))
+            if mode=='nan':
+                f_sd =  f_sd.append(pd.Series([np.nan]*pad_width))
+            if mode=='edge':
+                f_sd =  f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
+            if mode=='mirror':
+                # TODO: filling with mean doesnt make sense
+                continue
+            f_sd_downsample = f_sd.iloc[::step_size]
+            f_sd_downsample.fillna(inplace=True, method='bfill')
+            df2[bp, dim] = f_sd_downsample.values
+            assert target_length == len(f_sd_downsample)
     return df2
 
 def interpolate_ca_data(dlc_trial, F_trial, plot=False):
@@ -76,6 +89,7 @@ def get_aligned_data(suite2p_path,
                      FOV = "FOV_04",
                      camera = "side",
                      session = "041022",
+                     sampling = "up",
                      plot=False,
                      overwrite=False):
     """
@@ -117,7 +131,7 @@ def get_aligned_data(suite2p_path,
                                     sessionwise_data_path, mouse, FOV, camera, session)
     """
     os.makedirs(os.path.join(aligned_data_path, mouse), exist_ok=True)
-    dict_save_path = os.path.join(aligned_data_path, mouse, f"{session}-dict_aligned.npy")
+    dict_save_path = os.path.join(aligned_data_path, mouse, f"{session}-dict_aligned-{sampling}sampled.npy")
     if os.path.isfile(dict_save_path) and (overwrite == False):
         dict_return = np.load(dict_save_path, allow_pickle=True).tolist()
         print(f"File found at {dict_save_path}")
@@ -128,11 +142,11 @@ def get_aligned_data(suite2p_path,
     bpod_data = np.load(bpod_filepath, allow_pickle=True).tolist()
 
     behavior_movie_names = bpod_data['behavior_movie_name_list']
-    print(behavior_movie_names)
-    print(bpod_data['scanimage_file_names'])
+    # print(behavior_movie_names)
+    # print(bpod_data['scanimage_file_names'])
     files_with_movies = []
     for i, k in enumerate(bpod_data['scanimage_file_names']):
-        print(k)
+        # print(k)
         if str(k) == 'no movie for this trial':
             files_with_movies.append(False)
         else:
@@ -191,7 +205,7 @@ def get_aligned_data(suite2p_path,
         with open(trial_json) as f:
             trial_metadata = json.load(f) 
         F_trial = F_trialwise[i].T
-        print(F_trial.shape)
+        # print(F_trial.shape)
 
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
         trial_json = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("json")][0]
@@ -203,7 +217,7 @@ def get_aligned_data(suite2p_path,
 
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
         if dlc_trial.shape[0] == 0 or F_trial.shape[1] == 0:
-            print(dlc_trial.shape, F_trial.shape)
+            # print(dlc_trial.shape, F_trial.shape)
             continue
 
         if frame_times_dlc[-1] > frame_times_ca[-1]:
@@ -215,10 +229,13 @@ def get_aligned_data(suite2p_path,
             closest_id = np.argmin(np.abs(frame_times_ca - frame_times_dlc[-1]))
             print(f"offset shape = {F_trial.shape[1] - closest_id}")
             F_trial = F_trial[:, :closest_id]
+        
+        if sampling=='up':
+            F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
+        if sampling=='down':
+            dlc_trial = collapse_dlc_data(dlc_trial, target_length=F_trial.shape[1], window=100)
+            dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
 
-        dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
-
-        F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
         F_aligned.append(F_trial)
         trials_taken.append(i)
         lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
@@ -235,7 +252,7 @@ def get_aligned_data(suite2p_path,
     for i, F_trial in enumerate(F_aligned):
         dff_aligned.append((F_trial - sd_list)/sd_list)
     dff_aligned_s = np.hstack(dff_aligned)
-
+    
     # # baseline subtraction: dff = dff - dff[:1000]
     # baseline_sub = np.nanmean(dff_aligned_s[:, :1000], axis=1).reshape(-1, 1)
     # for i, dff_trial in enumerate(dff_aligned):

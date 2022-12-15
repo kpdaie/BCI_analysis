@@ -174,7 +174,7 @@ def dlc_approx_reward_time(lport, rt):
 
     return rtrel_dlc
 
-def plot_trace(dff_mean, dff_sd, session=None, indices=None, dim=(2,4), ax=None):
+def plot_trace(dff_mean, dff_sd, plt_save_path, session=None, indices=None, dim=(2,4), ax=None):
 
     # fig = plt.figure(figsize=tuple(i * 4 for i in dim)[::-1])
     color = None
@@ -225,19 +225,7 @@ def plot_daycompare(dffs, sems, sessions_list, indices, align_at='lick', dim=(2,
     plt.show()
 
 
-def plot_population_lta(suite2p_path,
-                        dlc_base_dir,
-                        bpod_path,
-                        sessionwise_data_path,
-                        plt_save_path,
-                        aligned_data_path,
-                        align_at="lick",
-                        mouse="BCI_26",
-                        FOV="FOV_04",
-                        camera="side",
-                        session="041022",
-                        plot=True,
-                        overwrite=False):
+def plot_population_lta(dict_aligned=None, align_at="lick", plot=True):
     """
     This function plots and saves the plot to lick triggered population average. We take population
     activity nearby licks throughout the session and then average over the licks. We then plot a
@@ -258,10 +246,6 @@ def plot_population_lta(suite2p_path,
     plot_population_lta(suite2p_path, dlc_base_dir, bpod_path, sessionwise_data_path, 
                         plt_save_path, mouse, FOV, camera, session)
     """
-
-    dict_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
-            sessionwise_data_path, aligned_data_path, mouse, 
-            FOV, camera, session, plot=False, overwrite=overwrite)
 
     if dict_aligned is None:
         return
@@ -331,9 +315,9 @@ def plot_population_lta(suite2p_path,
             ts_change_loc1 = get_paw_changes(DLC_paw)
             [changetimes.append((i, j)) for j in ts_change_loc1]
 
-    tframes = 2000
+    tframes = 1000
     ctr = 0
-    dff_lw = np.zeros((dff_aligned_s.shape[0], tframes, len(changetimes)))
+    dff_lw = np.zeros((dff_aligned_s.shape[0], tframes, len(changetimes)))  ## TODO: change to NaNs
     # for tl, ls in enumerate(lick_starts):
     # print(rtrel_dlc, dict_aligned['reward_times_aligned'])
     for i, (tl, ls) in enumerate(changetimes):
@@ -367,7 +351,7 @@ def plot_population_lta(suite2p_path,
         plt.imshow(dff_avg[sorted_m[:]], aspect="auto", cmap=cmap_cl, norm=norm_cl)
         plt.axvline(x=tframes//2, color='black')
         plt.yticks(cn_sorted[0], [f'{cn}: CN'])
-        plt.title(f'{mouse}-{session}')
+        # plt.title(f'{mouse}-{session}')
         plt.colorbar()
 
         plt.subplot(122)
@@ -382,7 +366,7 @@ def plot_population_lta(suite2p_path,
         print(f"saved to {save_path}")
         plt.show()
 
-        plot_trace(dff_avg, sem, session, indices=sorted_m[-8:], dim=(4, 2))
+        plot_trace(dff_avg, sem, session, plt_save_path, indices=sorted_m[-8:], dim=(4, 2))
     
     return dff_avg, sem, sorted_m
 
