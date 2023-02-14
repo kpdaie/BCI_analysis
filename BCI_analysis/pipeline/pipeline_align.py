@@ -9,8 +9,14 @@ from tqdm import tqdm
 from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise
 import json
 
-def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, window=100, mode='edge'):
+def collapse_dlc_data(dlc_data: pd.DataFrame, 
+                      sample_interval,
+                      target_length: int=0, 
+                      window=100, 
+                      function='std', #std,diff,mean
+                      mode='edge'):
     """
+    # TODO - add just position with downsampling
     This function takes the dlc_data and converts the shape to target_length, 
     1. Calculates a moving standard deviation with a window
     2. Downsample
@@ -30,26 +36,44 @@ def collapse_dlc_data(dlc_data: pd.DataFrame, target_length: int=0, window=100, 
     pad_width = target_length - dlc_data.shape[0]%target_length
     df2 = pd.DataFrame(0, index=range(target_length), columns=dlc_data.columns)
     bodyparts = list(dlc_data.columns.levels[0])
-
+    
+    calcium_transient_t = np.arange(0,1,sample_interval)# ms 
+    tau_rise = 0.07
+    tau_decay = 0.7
+    amplitude = 1
+    #rise = 1- np.exp(calcium_transient_t/tau_rise*-1)
+    decay = np.exp(calcium_transient_t/-tau_decay)
+    calcium_transient = decay #rise*decay
+    calcium_transient = amplitude*calcium_transient/np.max(calcium_transient)
+    calcium_transient = np.concatenate([np.zeros_like(calcium_transient),calcium_transient])
     for bp in bodyparts:
         for dim in ["x", "y"]:
             df_bp = dlc_data[bp][dim]
-            f_sd = df_bp.rolling(window=window).std()
+            if function == 'std':
+                f_sd = df_bp.rolling(window=window).std()
+            elif function == 'mean':
+                f_sd = df_bp.rolling(window=window).mean()
+            elif function == 'diff': # absolute speed averaged in a window
+                f_sd = pd.Series(np.concatenate([[0],np.diff(df_bp)])).rolling(window=window).mean().abs()
             pad_width = target_length - len(f_sd)%target_length
             step_size = (len(f_sd) + pad_width)//target_length
             if mode=='zero':
                 f_sd =  f_sd.append(pd.Series([0]*pad_width))
-            if mode=='nan':
+            elif mode=='nan':
                 f_sd =  f_sd.append(pd.Series([np.nan]*pad_width))
-            if mode=='edge':
-                f_sd =  f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
-            if mode=='mirror':
-                # TODO: filling with mean doesnt make sense
-                continue
+            elif mode=='edge':
+                f_sd =  pd.concat([f_sd,pd.Series([f_sd[-100:].mean()]*pad_width)])#f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
+            
+            
+            f_sd.fillna(inplace=True, method='bfill')
+            len_orig = len(f_sd)
+            f_sd = pd.Series(np.convolve(f_sd,calcium_transient,'same'))
+            f_sd = f_sd[:len_orig]
+            
             f_sd_downsample = f_sd.iloc[::step_size]
-            f_sd_downsample.fillna(inplace=True, method='bfill')
             df2[bp, dim] = f_sd_downsample.values
             assert target_length == len(f_sd_downsample)
+            #asdasd
     return df2
 
 def interpolate_ca_data(dlc_trial, F_trial, plot=False):
@@ -166,7 +190,7 @@ def get_aligned_data(suite2p_path,
         filelist = json.load(f)
 
     cl_trial_list = [filelist['file_name_list'][i] for i in range(len(filelist['frame_num_list'])) if filelist['file_name_list'][i].startswith("neuron")]
-    print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
+    #print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
 
     F_trialwise = sessionwise_to_trialwise(F, ca_data['all_si_filenames'], ca_data['closed_loop_filenames'], 
             ca_data['all_si_frame_nums'], ca_data['sampling_rate'], align_on="trial_start", max_frames="all")
@@ -219,22 +243,28 @@ def get_aligned_data(suite2p_path,
         if dlc_trial.shape[0] == 0 or F_trial.shape[1] == 0:
             # print(dlc_trial.shape, F_trial.shape)
             continue
-
+    
         if frame_times_dlc[-1] > frame_times_ca[-1]:
             closest_id = np.argmin(np.abs(frame_times_dlc - frame_times_ca[-1]))
-            print(f"offset shape = {dlc_trial.shape[0] - closest_id}")
+            #print(f"offset shape = {dlc_trial.shape[0] - closest_id}")
             dlc_trial = dlc_trial[:closest_id]
+            frame_times_dlc = frame_times_dlc[:closest_id]
 
         if frame_times_dlc[-1] < frame_times_ca[-1]:
             closest_id = np.argmin(np.abs(frame_times_ca - frame_times_dlc[-1]))
-            print(f"offset shape = {F_trial.shape[1] - closest_id}")
+            #print(f"offset shape = {F_trial.shape[1] - closest_id}")
             F_trial = F_trial[:, :closest_id]
         
         if sampling=='up':
             F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
-        if sampling=='down':
-            dlc_trial = collapse_dlc_data(dlc_trial, target_length=F_trial.shape[1], window=100)
+        if sampling=='down': # TODO have option to have both position and speed
+            dlc_trial = collapse_dlc_data(dlc_trial, 
+                                          np.nanmedian(np.diff(frame_times_dlc)),
+                                          target_length=F_trial.shape[1], 
+                                          function = 'diff',
+                                          window=20)
             dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
+        
 
         F_aligned.append(F_trial)
         trials_taken.append(i)

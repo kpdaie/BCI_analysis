@@ -27,7 +27,7 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                     continue
                 start_frame = filename_start_frame[i]
                 end_frame = filename_start_frame[i+1]
-                print(start_frame, end_frame)
+                #print(start_frame, end_frame)
 
                 if align_on == "go_cue":
                     start_frame += int(go_cue_times[counter]*fs)
