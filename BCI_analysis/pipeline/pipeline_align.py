@@ -6,14 +6,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
-from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise
+from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise, sessionwise_to_trialwise_simple
 import json
 
 def collapse_dlc_data(dlc_data: pd.DataFrame, 
                       sample_interval,
                       target_length: int=0, 
                       window=100, 
-                      function='std', #std,diff,mean
+                      functions=['std'], #std,diff,mean
+                      convolve_tau = 0,
                       mode='edge'):
     """
     # TODO - add just position with downsampling
@@ -34,45 +35,58 @@ def collapse_dlc_data(dlc_data: pd.DataFrame,
         dataframe of the desired target_length
     """
     pad_width = target_length - dlc_data.shape[0]%target_length
-    df2 = pd.DataFrame(0, index=range(target_length), columns=dlc_data.columns)
+    cols_new = []
+    for function in functions:
+        for col in dlc_data.columns:
+            cols_new.append((col[0],function,col[1]))
+    df2 = pd.DataFrame(0, index=range(target_length), columns=cols_new)#dlc_data.columns)
     bodyparts = list(dlc_data.columns.levels[0])
     
     calcium_transient_t = np.arange(0,1,sample_interval)# ms 
-    tau_rise = 0.07
-    tau_decay = 0.7
-    amplitude = 1
-    #rise = 1- np.exp(calcium_transient_t/tau_rise*-1)
-    decay = np.exp(calcium_transient_t/-tau_decay)
-    calcium_transient = decay #rise*decay
-    calcium_transient = amplitude*calcium_transient/np.max(calcium_transient)
-    calcium_transient = np.concatenate([np.zeros_like(calcium_transient),calcium_transient])
-    for bp in bodyparts:
-        for dim in ["x", "y"]:
-            df_bp = dlc_data[bp][dim]
-            if function == 'std':
-                f_sd = df_bp.rolling(window=window).std()
-            elif function == 'mean':
-                f_sd = df_bp.rolling(window=window).mean()
-            elif function == 'diff': # absolute speed averaged in a window
-                f_sd = pd.Series(np.concatenate([[0],np.diff(df_bp)])).rolling(window=window).mean().abs()
-            pad_width = target_length - len(f_sd)%target_length
-            step_size = (len(f_sd) + pad_width)//target_length
-            if mode=='zero':
-                f_sd =  f_sd.append(pd.Series([0]*pad_width))
-            elif mode=='nan':
-                f_sd =  f_sd.append(pd.Series([np.nan]*pad_width))
-            elif mode=='edge':
-                f_sd =  pd.concat([f_sd,pd.Series([f_sd[-100:].mean()]*pad_width)])#f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
-            
-            
-            f_sd.fillna(inplace=True, method='bfill')
-            len_orig = len(f_sd)
-            f_sd = pd.Series(np.convolve(f_sd,calcium_transient,'same'))
-            f_sd = f_sd[:len_orig]
-            
-            f_sd_downsample = f_sd.iloc[::step_size]
-            df2[bp, dim] = f_sd_downsample.values
-            assert target_length == len(f_sd_downsample)
+    if convolve_tau>0:
+        amplitude = 1
+        #rise = 1- np.exp(calcium_transient_t/tau_rise*-1)
+        decay = np.exp(calcium_transient_t/-convolve_tau)
+        calcium_transient = decay #rise*decay
+        calcium_transient = amplitude*calcium_transient/np.max(calcium_transient)
+        calcium_transient = np.concatenate([np.zeros_like(calcium_transient),calcium_transient])
+    for function in functions:
+        for bp in bodyparts:
+            for dim in ["x", "y"]:
+                df_bp = dlc_data[bp][dim]
+                if function == 'std':
+                    f_sd = df_bp.rolling(window=window).std()
+                elif function == 'mean':
+                    f_sd = df_bp.rolling(window=window).mean()
+                elif function == 'diff': # absolute speed averaged in a window
+                    f_sd = pd.Series(np.concatenate([[0],np.diff(df_bp)])).rolling(window=window).mean().abs()
+                elif function == 'diff_signed': # absolute speed averaged in a window
+                    f_sd = pd.Series(np.concatenate([[0],np.diff(df_bp)])).rolling(window=window).mean()#.abs()
+                elif function == 'raw':
+                    f_sd = df_bp
+                pad_width = target_length - len(f_sd)%target_length
+                step_size = (len(f_sd) + pad_width)//target_length
+                if mode=='zero':
+                    f_sd =  f_sd.append(pd.Series([0]*pad_width))
+                elif mode=='nan':
+                    f_sd =  f_sd.append(pd.Series([np.nan]*pad_width))
+                elif mode=='edge':
+                    f_sd =  pd.concat([f_sd,pd.Series([f_sd[-100:].mean()]*pad_width)])#f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
+
+
+                f_sd.fillna(inplace=True, method='bfill')
+                len_orig = len(f_sd)
+                if convolve_tau>0: #(function != 'raw') and (
+                    if len(calcium_transient)>len(f_sd): # double tapering to avoid edge effects
+                        f_sd_ = pd.Series(np.convolve(np.concatenate([f_sd,f_sd[::-1],f_sd,f_sd[::-1],f_sd]),calcium_transient,'same'))
+                        f_sd = f_sd_[len(f_sd)*2:len(f_sd)*2+len_orig]
+                    else:
+                        f_sd_ = pd.Series(np.convolve(np.concatenate([f_sd[::-1],f_sd,f_sd[::-1]]),calcium_transient,'same'))
+                        f_sd = f_sd_[len(f_sd):len(f_sd)+len_orig]
+
+                f_sd_downsample = f_sd.iloc[::step_size]
+                df2[bp, function,dim] = f_sd_downsample.values
+                assert target_length == len(f_sd_downsample)
             #asdasd
     return df2
 
@@ -114,8 +128,12 @@ def get_aligned_data(suite2p_path,
                      camera = "side",
                      session = "041022",
                      sampling = "up",
+                     functions = ['mean','diff'],
+                     convolve_tau = 0,
                      plot=False,
-                     overwrite=False):
+                     overwrite=False,
+                     use_provided_data=False,
+                     source_data = None):
     """
     This script returns aligned F (raw flouroscence trace) and DLC data. 
     a. If there are multiple movie files a trial they are thrown out. 
@@ -177,23 +195,47 @@ def get_aligned_data(suite2p_path,
             files_with_movies.append(True)                        
     behavior_movie_names = behavior_movie_names[files_with_movies]
 
-    trial_start_times = bpod_data['trial_start_times']
+    #trial_start_times = bpod_data['trial_start_times']
+    if use_provided_data:
+        F = source_data['F']
+        fs = 1/source_data['si']
+        lick_times = []
+        reward_times = []
+        trial_times = []
+        cn = source_data['cn']
+        
+        print('bpod trials: {}'.format(len(behavior_movie_names)))
+        print('imaging trials: {}'.format(sum(source_data['trial_start'])))
+        F_trialwise = sessionwise_to_trialwise_simple(F, source_data['trial_start'],max_frames = 'all')
+        print(len(F_trialwise))
+        print(F_trialwise[0].shape)
+        if len(behavior_movie_names) != sum(source_data['trial_start']):
+            asdas
+            print('unequal trial number, aborting')
+            # here assume that trials were skipped from the beginning and/or end
+            # so instead of aborting, subtract the trial lengths from each other while
+            # pushing the trials in time, and find the one that has the minimum absolute value - that offset is the winner
+            return None
+        
+    else:
+        ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
+        F = ca_data['F_sessionwise']
+        fs = ca_data['sampling_rate']
+        lick_times = ca_data['lick_times']
+        reward_times = ca_data['reward_times']
+        trial_times = ca_data["trial_times"]
+        cn = ca_data["cn"][0]
+        if cn is None:
+            print(f"{session}: CN is None, assigning value 0")
+            cn = 0
 
-    ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
-    F = ca_data['F_sessionwise']
-    fs = ca_data['sampling_rate']
-    lick_times = ca_data['lick_times']
-    reward_times = ca_data['reward_times']
-    trial_times = ca_data["trial_times"]
+        with open(os.path.join(suite2p_path, mouse, FOV, session, "filelist.json")) as f:
+            filelist = json.load(f)
 
-    with open(os.path.join(suite2p_path, mouse, FOV, session, "filelist.json")) as f:
-        filelist = json.load(f)
 
-    cl_trial_list = [filelist['file_name_list'][i] for i in range(len(filelist['frame_num_list'])) if filelist['file_name_list'][i].startswith("neuron")]
-    #print(len(cl_trial_list),len(behavior_movie_names), len(trial_start_times))
-
-    F_trialwise = sessionwise_to_trialwise(F, ca_data['all_si_filenames'], ca_data['closed_loop_filenames'], 
-            ca_data['all_si_frame_nums'], ca_data['sampling_rate'], align_on="trial_start", max_frames="all")
+        F_trialwise = sessionwise_to_trialwise(F, ca_data['all_si_filenames'], ca_data['closed_loop_filenames'], 
+                ca_data['all_si_frame_nums'], ca_data['sampling_rate'], align_on="trial_start", max_frames="all")
+        
 
     F_aligned = []
     lt = []
@@ -261,16 +303,21 @@ def get_aligned_data(suite2p_path,
             dlc_trial = collapse_dlc_data(dlc_trial, 
                                           np.nanmedian(np.diff(frame_times_dlc)),
                                           target_length=F_trial.shape[1], 
-                                          function = 'diff',
+                                          functions = functions,
+                                          convolve_tau = convolve_tau,
                                           window=20)
             dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
         
 
         F_aligned.append(F_trial)
+        #print(F_trial.shape)
         trials_taken.append(i)
-        lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
-        rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
-        tt.append(trial_times[i])
+        try:
+            lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
+            rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
+            tt.append(trial_times[i])
+        except:
+            pass
                     
     if len(F_aligned) == 0:
         print(f"No data found, session {session}")
@@ -288,10 +335,7 @@ def get_aligned_data(suite2p_path,
     # for i, dff_trial in enumerate(dff_aligned):
     #     dff_aligned[i] = dff_trial - baseline_sub
 
-    cn = ca_data["cn"][0]
-    if cn is None:
-        print(f"{session}: CN is None, assigning value 0")
-        cn = 0
+    
 
     dict_return = {
             "F_aligned": F_aligned,
