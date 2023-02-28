@@ -5,6 +5,41 @@ import json
 from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
 from tqdm import tqdm
 
+
+def sessionwise_to_trialwise_simple(F, 
+                                    trial_start,
+                                    max_frames=None,
+                                    frames_after=None, 
+                                    frames_before=None):
+    
+    start_frames = np.where(trial_start)[0]
+    end_frames = np.concatenate([np.where(trial_start)[0][1:],[len(trial_start)]])
+    if max_frames == "all":
+        print("Since max_frames is all, this function will return a list of F trialwise as all trials have different lengths")
+        F_trialwise_closed_loop = []
+        for start_frame,end_frame in zip(start_frames,end_frames):
+            F_trialwise_closed_loop.append(F[:, start_frame:end_frame].T)
+    else:
+        max_frames = frames_after + frames_before
+        F_trialwise_closed_loop = np.ones((max_frames, F.shape[0], len(start_frames)))*np.nan
+        counter = 0
+        for start_frame,end_frame in zip(start_frames,end_frames):
+
+            if end_frame - start_frame > frames_after:
+                end_frame = start_frame + frames_after
+            start_frame = start_frame - frames_before # taking 40 time points before trial starts
+            if start_frame<0: # taking care of edge at the beginning
+                missing_frames_at_beginning = np.abs(start_frame)
+                start_frame = 0
+            else:
+                missing_frames_at_beginning = 0
+            F_trialwise_closed_loop[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+            counter += 1
+
+    return F_trialwise_closed_loop
+
+        
+
 def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_num, fs, align_on = "go_cue", go_cue_times=None, reward_times=None, max_frames=None, frames_after=None, frames_before=None):
     """
     this function does not care if there is a movie for the trial or not, handle this somewhere else
