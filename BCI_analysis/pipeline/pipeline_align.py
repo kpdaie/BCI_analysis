@@ -243,7 +243,7 @@ def get_aligned_data(suite2p_path,
     tt = []
     dlc_data = None
     trials_taken = []
-
+    trial_start_indices = []
     for i, bm_name in tqdm(enumerate(behavior_movie_names)):
 
         if type(bm_name) == str:
@@ -306,9 +306,12 @@ def get_aligned_data(suite2p_path,
                                           functions = functions,
                                           convolve_tau = convolve_tau,
                                           window=20)
+            
+            
             dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
+            trial_start_indices.append(len(dlc_data))
         
-
+        
         F_aligned.append(F_trial)
         #print(F_trial.shape)
         trials_taken.append(i)
@@ -318,7 +321,7 @@ def get_aligned_data(suite2p_path,
             tt.append(trial_times[i])
         except:
             pass
-                    
+    print(trial_start_indices)                
     if len(F_aligned) == 0:
         print(f"No data found, session {session}")
         return None
@@ -345,7 +348,8 @@ def get_aligned_data(suite2p_path,
             "reward_times_aligned": rt,
             "trial_times_aligned": tt,
             "cn": cn,
-            "trials_taken": trials_taken
+            "trials_taken": trials_taken,
+            "trial_start_indices":trial_start_indices
             } 
     np.save(dict_save_path, dict_return)
     return dict_return
