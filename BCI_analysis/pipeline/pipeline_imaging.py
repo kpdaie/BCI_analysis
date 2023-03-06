@@ -11,7 +11,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
                                 fov_stats_file, 
                                 plot = False,
                                 return_distances = False,
-                                calculate_cn_lickport_correlation = True):
+                                calculate_cn_lickport_correlation = False):
     """
     This script matches the scanimage conditioned neuron to the suite2p ROI
     Parameters
@@ -60,6 +60,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
     distances_all = []
     for i,(filename,tiff_header) in enumerate(zip(behavior_dict['scanimage_file_names'],behavior_dict['scanimage_tiff_headers'])):    #find names of conditioned neurons
         scanimage_filenames.append(filename)
+        #print(behavior_dict['scanimage_roi_outputChannelsRoiNames'])
         if len(behavior_dict['scanimage_roi_outputChannelsRoiNames'][i]) >0:
             metadata  = tiff_header.tolist()[0]
             for roi_fcn_i, roi_fnc_name in enumerate(behavior_dict['scanimage_roi_outputChannelsNames'][i]):
@@ -116,9 +117,13 @@ def find_conditioned_neuron_idx(session_bpod_file,
     roinames_list = list()
     Lx = int(metadata['metadata']['hRoiManager']['pixelsPerLine'])
     Ly = int(metadata['metadata']['hRoiManager']['linesPerFrame'])
-    yup,xup = upsample_block_shifts(Lx, Ly, ops['nblocks'], ops['xblock'], ops['yblock'], np.median(ops['yoff1_list'][:5000,:],0)[np.newaxis,:], np.median(ops['xoff1_list'][:5000,:],0)[np.newaxis,:])
-    xup=xup.squeeze()#+x_offset 
-    yup=yup.squeeze()#+y_offset 
+    try:
+        yup,xup = upsample_block_shifts(Lx, Ly, ops['nblocks'], ops['xblock'], ops['yblock'], np.median(ops['yoff1_list'][:5000,:],0)[np.newaxis,:], np.median(ops['xoff1_list'][:5000,:],0)[np.newaxis,:])
+        xup=xup.squeeze()#+x_offset 
+        yup=yup.squeeze()#+y_offset 
+    except:
+        xup = np.zeros([Ly,Lx])
+        yup = np.zeros([Ly,Lx])
     # =============================================================================
     #     plt.figure()
     #     img = plt.imshow(ops['meanImg'])#meanimg_dict['refImg_original'])
@@ -222,6 +227,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
             fr = float(behavior_dict['scanimage_tiff_headers'][trial_i][0]['frame_rate'])
             zaber_move_times = behavior_dict['zaber_move_forward'][trial_i]
             zaber_move_indices = np.asarray(zaber_move_times*fr,int)+start_idx
+            zaber_move_indices = np.asarray(zaber_move_indices,int)
             lickport_movements[zaber_move_indices]+=1
             reward_time = behavior_dict['reward_L'][trial_i]
             if len(reward_time)>0:
@@ -235,7 +241,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
         # decay = decay/np.sum(decay)
         # convolved_lickport_movement = np.convolve(lickport_movements,decay,'full')
         convolved_lickport_movement = lickport_movements#convolved_lickport_movement[:len(lickport_movements)]
-        for i in reward_indices:
+        for i in np.asarray(reward_indices,int):
             convolved_lickport_movement[i:i+reward_skip_frames] = 0
 
 
@@ -245,7 +251,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
             maxv = np.percentile(dff[cn_i,:],99)
             df_now = dff[cn_i,:]/maxv
             df_now= plot_utils.rollingfun(df_now,4)
-            for i in reward_indices:
+            for i in np.asarray(reward_indices,int):
                 df_now[i:i+reward_skip_frames] = 0
             a = convolved_lickport_movement
             b = np.asarray(list(df_now)*3)
