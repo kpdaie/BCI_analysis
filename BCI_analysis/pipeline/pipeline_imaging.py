@@ -69,9 +69,11 @@ def find_conditioned_neuron_idx(session_bpod_file,
                     bpod_analog_idx = roi_fcn_i
                     break
             try:
-                conditioned_neuron_name = (behavior_dict['scanimage_roi_outputChannelsRoiNames'][i][bpod_analog_idx])[0]
-            except:
                 conditioned_neuron_name = (behavior_dict['scanimage_roi_outputChannelsRoiNames'][i][bpod_analog_idx])
+                if len(conditioned_neuron_name) == 1: # there is only one CN
+                    conditioned_neuron_name = conditioned_neuron_name[0]
+            except:
+                conditioned_neuron_name = (behavior_dict['scanimage_roi_outputChannelsRoiNames'][i][bpod_analog_idx]) # sometimes it's empty and 
             if len(conditioned_neuron_name) == 0:
                 conditioned_neuron_name = ''
             rois = metadata['metadata']['json']['RoiGroups']['integrationRoiGroup']['rois']   
@@ -83,16 +85,32 @@ def find_conditioned_neuron_idx(session_bpod_file,
                     roinames_list.append(roi['name'])
                 except:
                     roinames_list.append(None)
-            try:
-                roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
-            except:
+            if type(conditioned_neuron_name) == str: 
                 try:
-                    print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
-                    conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
                     roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
                 except:
-                    print('no usable ROI idx, skipping')
-                    roi_idx = None
+                    try:
+                        print('ROI names in scanimage header does not match up: {}'.format(conditioned_neuron_name))
+                        conditioned_neuron_name = ' '.join(conditioned_neuron_name.split(","))
+                        roi_idx = np.where(np.asarray(roinames_list)==conditioned_neuron_name)[0][0]+1
+                    except:
+                        print('no usable ROI idx, skipping')
+                        roi_idx = None                
+            else:
+                #print('multiple CN')
+                roi_idx= []
+                for cnn in conditioned_neuron_name:
+                    try:
+                        roi_idx.append(np.where(np.asarray(roinames_list)==cnn)[0][0]+1)
+                    except:
+                        try:
+                            print('ROI names in scanimage header does not match up: {}'.format(cnn))
+                            cnn = ' '.join(cnn.split(","))
+                            roi_idx.append(np.where(np.asarray(roinames_list)==cnn)[0][0]+1)
+                        except:
+                            print('no usable ROI idx, skipping')
+                            roi_idx.append(None)
+
 
         else:
             conditioned_neuron_name  =''
@@ -186,15 +204,35 @@ def find_conditioned_neuron_idx(session_bpod_file,
         if roi_idx_now is None:
             cond_s2p_idx.append(None)
             continue
-        med_list = list()
-        dist_list = list()
-        for cell_stat in stat:
-            dist = np.sqrt((centerXY_list[roi_idx_now-1][0]-cell_stat['med'][1])**2+(centerXY_list[roi_idx_now-1][1]-cell_stat['med'][0])**2)# - cell_stat['radius']
-            dist_list.append(dist)
-            med_list.append(cell_stat['med'])
-            #break
-        cond_s2p_idx.append(np.argmin(dist_list))
-        distances_all.append(dist_list)
+        if type(roi_idx_now) == list: # multi-CN
+            med_list = list()
+            dist_list = list()
+            cond_s2p_idx_ = []
+            for r_i_n in roi_idx_now:
+                dist_list_cell = []
+                med_list_cell = []
+                for cell_stat in stat:
+                    dist = np.sqrt((centerXY_list[r_i_n-1][0]-cell_stat['med'][1])**2+(centerXY_list[r_i_n-1][1]-cell_stat['med'][0])**2)# - cell_stat['radius']
+                    dist_list_cell.append(dist)
+                    med_list_cell.append(cell_stat['med'])
+                    #break
+                dist_list.append(dist_list_cell)
+                med_list.append(med_list_cell)
+                cond_s2p_idx_.append(np.argmin(dist_list_cell))
+
+            cond_s2p_idx.append(cond_s2p_idx_)
+            distances_all.append(dist_list)
+
+        else:
+            med_list = list()
+            dist_list = list()
+            for cell_stat in stat:
+                dist = np.sqrt((centerXY_list[roi_idx_now-1][0]-cell_stat['med'][1])**2+(centerXY_list[roi_idx_now-1][1]-cell_stat['med'][0])**2)# - cell_stat['radius']
+                dist_list.append(dist)
+                med_list.append(cell_stat['med'])
+                #break
+            cond_s2p_idx.append(np.argmin(dist_list))
+            distances_all.append(dist_list)
 
     if calculate_cn_lickport_correlation:
         # calculate correlation between lickport steps and CN, could go to another function TODO
@@ -313,7 +351,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
         ax_meanimage.imshow(ops['meanImg'])#,cmap = 'gray')
         mask = np.zeros_like(ops['meanImg'])
         for i,roi_stat in enumerate(stat):
-            if i == np.unique(np.asarray(cond_s2p_idx)[np.asarray(cond_s2p_idx) != None])[0]:
+            if any(i == np.unique(np.asarray(cond_s2p_idx)[np.asarray(cond_s2p_idx) != None])):
                 mask[roi_stat['ypix'],roi_stat['xpix']] = 2
             else:
                 mask[roi_stat['ypix'],roi_stat['xpix']] = 1
@@ -324,4 +362,5 @@ def find_conditioned_neuron_idx(session_bpod_file,
         return cond_s2p_idx,closed_loop_trial,scanimage_filenames,distances_all
     else:
         return cond_s2p_idx,closed_loop_trial,scanimage_filenames
+
 
