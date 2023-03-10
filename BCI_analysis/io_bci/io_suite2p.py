@@ -273,11 +273,21 @@ def suite2p_to_npy(suite2p_path,
                         dff_trialwise_all[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, i] = dff[:, start_frame:end_frame].T
                                                 
                     
-                    # print(f"cn idx: {np.unique(cn_idx)}")
+                    #print(f"cn idx: {np.unique(cn_idx)}")
                     roi_centers = [(stat[i]['xpix'].mean(), stat[i]['ypix'].mean()) for i in range(len(stat))]
                     roi_centers = np.asarray(roi_centers)
-                    roi_centers_cn = roi_centers - roi_centers[cn_idx[0]]
-                    dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
+                    idxi = 0
+                    while cn_idx[idxi] == None:
+                        idxi += 1
+                    if type(cn_idx[idxi]) == int:
+                        roi_centers_cn = roi_centers - roi_centers[cn_idx[0]]
+                        dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
+                    else:
+                        dist = []
+                        for cn_idx_ in cn_idx[idxi]:
+                            roi_centers_cn = roi_centers - roi_centers[cn_idx_]
+                            dist_ = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
+                            dist.append(dist_)
 
                     if not os.path.isfile(behavior_fname):
                         print("No corresponding behavior data found for {}".format(session_date))
