@@ -19,6 +19,8 @@ def rollingfun(y, window = 10, func = 'mean'):
             out = np.ones(len(y))*np.nanstd(y)
         elif func == 'median':
             out = np.ones(len(y))*np.nanmedian(y)
+        elif func == 'var':
+            out = np.ones(len(y))*np.nanvar(y)
         else:
             print('undefinied funcion in rollinfun')
     else:
@@ -36,6 +38,8 @@ def rollingfun(y, window = 10, func = 'mean'):
             out = np.nanstd(ys,0)[window:-window]
         elif func == 'median':
             out = np.nanmedian(ys,0)[window:-window]
+        elif func == 'var':
+            out = np.nanvar(ys,0)[window:-window]
         else:
             print('undefined funcion in rollinfun')
     return out
