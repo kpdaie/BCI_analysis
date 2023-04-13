@@ -7,7 +7,10 @@ import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
 from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise, sessionwise_to_trialwise_simple
-import json
+try:
+    import hdfdict # 
+except:
+    print('hdfdict not installed (for facerhythm) - skipped')
 
 def collapse_dlc_data(dlc_data: pd.DataFrame, 
                       sample_interval,
@@ -34,13 +37,21 @@ def collapse_dlc_data(dlc_data: pd.DataFrame,
     dataframe: pd.Dataframe
         dataframe of the desired target_length
     """
-    pad_width = target_length - dlc_data.shape[0]%target_length
-    cols_new = []
-    for function in functions:
-        for col in dlc_data.columns:
-            cols_new.append((col[0],function,col[1]))
+    try:
+        bodyparts = list(dlc_data.columns.levels[0])
+        dim_list = ['x','y']
+        cols_new = []
+        for function in functions:
+            for col in dlc_data.columns:
+                cols_new.append((col[0],function,col[1]))
+    except: #facerhythm
+        bodyparts = list(dlc_data.columns)
+        dim_list = ['x']
+        cols_new = []
+        for function in functions:
+            for col in dlc_data.columns:
+                cols_new.append((col,function,'x'))
     df2 = pd.DataFrame(0, index=range(target_length), columns=cols_new)#dlc_data.columns)
-    bodyparts = list(dlc_data.columns.levels[0])
     
     calcium_transient_t = np.arange(0,1,sample_interval)# ms 
     if convolve_tau>0:
@@ -52,8 +63,15 @@ def collapse_dlc_data(dlc_data: pd.DataFrame,
         calcium_transient = np.concatenate([np.zeros_like(calcium_transient),calcium_transient])
     for function in functions:
         for bp in bodyparts:
-            for dim in ["x", "y"]:
-                df_bp = dlc_data[bp][dim]
+            for dim in dim_list:
+
+                if (bp,dim) in list(dlc_data.keys().values):
+                    df_bp = dlc_data[bp][dim]
+                elif bp in list(dlc_data.keys().values): # faceRhythm
+                    df_bp = dlc_data[bp]
+                else:
+                    continue
+
                 if function == 'std':
                     f_sd = df_bp.rolling(window=window).std()
                 elif function == 'mean':
@@ -64,14 +82,17 @@ def collapse_dlc_data(dlc_data: pd.DataFrame,
                     f_sd = pd.Series(np.concatenate([[0],np.diff(df_bp)])).rolling(window=window).mean()#.abs()
                 elif function == 'raw':
                     f_sd = df_bp
-                pad_width = target_length - len(f_sd)%target_length
+                pad_width = target_length - dlc_data.shape[0]%target_length
+                if pad_width == target_length:
+                    pad_width = 0
                 step_size = (len(f_sd) + pad_width)//target_length
-                if mode=='zero':
-                    f_sd =  f_sd.append(pd.Series([0]*pad_width))
-                elif mode=='nan':
-                    f_sd =  f_sd.append(pd.Series([np.nan]*pad_width))
-                elif mode=='edge':
-                    f_sd =  pd.concat([f_sd,pd.Series([f_sd[-100:].mean()]*pad_width)])#f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
+                if pad_width>0:
+                    if mode=='zero':
+                        f_sd =  f_sd.append(pd.Series([0]*pad_width))
+                    elif mode=='nan':
+                        f_sd =  f_sd.append(pd.Series([np.nan]*pad_width))
+                    elif mode=='edge':
+                        f_sd =  pd.concat([f_sd,pd.Series([f_sd[-100:].mean()]*pad_width)])#f_sd.append(pd.Series([f_sd[-100:].mean()]*pad_width))
 
 
                 f_sd.fillna(inplace=True, method='bfill')
@@ -83,11 +104,9 @@ def collapse_dlc_data(dlc_data: pd.DataFrame,
                     else:
                         f_sd_ = pd.Series(np.convolve(np.concatenate([f_sd[::-1],f_sd,f_sd[::-1]]),calcium_transient,'same'))
                         f_sd = f_sd_[len(f_sd):len(f_sd)+len_orig]
-
                 f_sd_downsample = f_sd.iloc[::step_size]
                 df2[bp, function,dim] = f_sd_downsample.values
                 assert target_length == len(f_sd_downsample)
-            #asdasd
     return df2
 
 def interpolate_ca_data(dlc_trial, F_trial, plot=False):
@@ -123,17 +142,23 @@ def get_aligned_data(suite2p_path,
                      bpod_path,
                      sessionwise_data_path,
                      aligned_data_path,
+                     motion_energy_base_dir,
                      mouse = "BCI_26",
                      FOV = "FOV_04",
                      camera = "side",
                      session = "041022",
                      sampling = "up",
                      functions = ['mean','diff'],
+                     function_window = 20, 
                      convolve_tau = 0,
                      plot=False,
                      overwrite=False,
                      use_provided_data=False,
-                     source_data = None):
+                     source_data = None,
+                     add_motion_energy = False,
+                     face_rhythm_base_dir = None,
+                     use_face_rhythm=False,
+                     match_with_face_rhythm = False):
     """
     This script returns aligned F (raw flouroscence trace) and DLC data. 
     a. If there are multiple movie files a trial they are thrown out. 
@@ -172,6 +197,22 @@ def get_aligned_data(suite2p_path,
     F_aligned, DLC_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
                                     sessionwise_data_path, mouse, FOV, camera, session)
     """
+    if use_face_rhythm or match_with_face_rhythm:
+        with open(os.path.join(face_rhythm_base_dir,mouse,session,"run_info.json")) as f:
+            face_rhythm_metadata = json.load(f)
+        face_rhythm_file_list_ = face_rhythm_metadata['Dataset_videos']['metadata']['paths_videos'][:face_rhythm_metadata['TCA']['num_dictElements']]
+        face_rhythm_file_list = []
+        for file_path_now_ in face_rhythm_file_list_:
+            face_rhythm_file_list.append(os.path.split(file_path_now_)[-1])
+        face_rhythm_file_list = np.asarray(face_rhythm_file_list)
+        data_facerhythm  = hdfdict.load(os.path.join(face_rhythm_base_dir,mouse,session,'analysis_files/TCA.h5'))
+        facerhythm_trial_names = list(data_facerhythm['factors_rearranged']['0']['trials'].data.keys())
+        trial_data_facerhythm = data_facerhythm['factors_rearranged']['0']['trials'].data
+        num_factors = data_facerhythm['factors']['0']['(xy points)'].shape[1]#.data.keys()
+        factor_names = []
+        for i_ in range(num_factors):
+            factor_names.append('Factor {}'.format(i_))
+        
     os.makedirs(os.path.join(aligned_data_path, mouse), exist_ok=True)
     dict_save_path = os.path.join(aligned_data_path, mouse, f"{session}-dict_aligned-{sampling}sampled.npy")
     if os.path.isfile(dict_save_path) and (overwrite == False):
@@ -210,7 +251,7 @@ def get_aligned_data(suite2p_path,
         print(len(F_trialwise))
         print(F_trialwise[0].shape)
         if len(behavior_movie_names) != sum(source_data['trial_start']):
-            asdas
+            #asdas
             print('unequal trial number, aborting')
             # here assume that trials were skipped from the beginning and/or end
             # so instead of aborting, subtract the trial lengths from each other while
@@ -275,41 +316,96 @@ def get_aligned_data(suite2p_path,
 
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
         trial_json = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("json")][0]
-
+        
+        
         frame_times_dlc = np.asarray(trial_metadata['frame_times'])
+        
+        if use_face_rhythm: ## TODO ## HARD-CODED downsampling that Rich used for the pilot data
+            frame_times_dlc = frame_times_dlc[::20] 
+            
         frame_times_ca = np.arange(0, F_trial.shape[1], 1, dtype=float)/fs
 
 
 
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
+        if add_motion_energy:
+            motion_energy_folder = os.path.join(motion_energy_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
+            motion_energy_fname = os.path.join(motion_energy_folder, trial_id+".npy")
+            motion_energy_dict = np.load(motion_energy_fname,allow_pickle = True).tolist()
+            for roi in motion_energy_dict['motion_energy_traces'].keys():
+                dlc_trial[roi,'x'] = np.concatenate([[motion_energy_dict['motion_energy_traces'][roi][0]],motion_energy_dict['motion_energy_traces'][roi]])
+            
+            
         if dlc_trial.shape[0] == 0 or F_trial.shape[1] == 0:
             # print(dlc_trial.shape, F_trial.shape)
             continue
-    
+        
         if frame_times_dlc[-1] > frame_times_ca[-1]:
-            closest_id = np.argmin(np.abs(frame_times_dlc - frame_times_ca[-1]))
+            closest_id_dlc = np.argmin(np.abs(frame_times_dlc - frame_times_ca[-1]))
             #print(f"offset shape = {dlc_trial.shape[0] - closest_id}")
-            dlc_trial = dlc_trial[:closest_id]
-            frame_times_dlc = frame_times_dlc[:closest_id]
+            dlc_trial = dlc_trial[:closest_id_dlc]
+            frame_times_dlc = frame_times_dlc[:closest_id_dlc]
+        else:
+            closest_id_dlc = -1
+            
 
         if frame_times_dlc[-1] < frame_times_ca[-1]:
             closest_id = np.argmin(np.abs(frame_times_ca - frame_times_dlc[-1]))
             #print(f"offset shape = {F_trial.shape[1] - closest_id}")
             F_trial = F_trial[:, :closest_id]
+            frame_times_ca = frame_times_ca[:closest_id]
         
         if sampling=='up':
             F_trial = interpolate_ca_data(dlc_trial, F_trial, plot=plot)
         if sampling=='down': # TODO have option to have both position and speed
-            dlc_trial = collapse_dlc_data(dlc_trial, 
-                                          np.nanmedian(np.diff(frame_times_dlc)),
-                                          target_length=F_trial.shape[1], 
-                                          functions = functions,
-                                          convolve_tau = convolve_tau,
-                                          window=20)
+            if use_face_rhythm:
+                # print(face_rhythm_file_list == dlc_file_name[-1])
+                # print(face_rhythm_file_list)
+                # print(dlc_file_name[-1])
+                if any(face_rhythm_file_list == dlc_file_name[-1].strip("'")):
+                    trial_index_fr = np.where(face_rhythm_file_list == dlc_file_name[-1].strip("'"))[0][0]
+                    dlc_trial_facerhythm = pd.DataFrame(data = trial_data_facerhythm[facerhythm_trial_names[trial_index_fr]][:],columns = factor_names)
+                    if closest_id_dlc>0:
+                        dlc_trial_facerhythm = dlc_trial_facerhythm[:closest_id_dlc]
+                    needed_indices = []
+                    for t in frame_times_ca: # TODO # downsample facerhythm here.. it was downsampled in a stupid way so I have to do a stupid fix
+                        needed_indices.append(np.argmin(np.abs(t-frame_times_dlc)))
+                    dlc_trial_facerhythm = dlc_trial_facerhythm.iloc[needed_indices]
+                    dlc_trial = collapse_dlc_data(dlc_trial_facerhythm, 
+                                              np.nanmedian(np.diff(frame_times_dlc)),#
+                                              target_length=F_trial.shape[1], 
+                                              functions = functions,
+                                              convolve_tau = convolve_tau,
+                                              window=function_window)    
+                    dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
+                    trial_start_indices.append(len(dlc_data))
+                                        
+                                        
+                else:
+                    print('facerhythm trial not found, skipping {}'.format(dlc_file_name[-1].strip("'")))
+                    continue
+                    
+                
+                
+                
+                
+            else:
+                if match_with_face_rhythm:
+                    if not any(face_rhythm_file_list == dlc_file_name[-1].strip("'")):
+                        print('facerhythm trial not found, skipping {}'.format(dlc_file_name[-1].strip("'")))
+                        continue
+                        
+                    
+                dlc_trial = collapse_dlc_data(dlc_trial, 
+                                              np.nanmedian(np.diff(frame_times_dlc)),
+                                              target_length=F_trial.shape[1], 
+                                              functions = functions,
+                                              convolve_tau = convolve_tau,
+                                              window=function_window)
             
             
-            dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
-            trial_start_indices.append(len(dlc_data))
+                dlc_data = pd.concat([dlc_data, dlc_trial], ignore_index=True) 
+                trial_start_indices.append(len(dlc_data))
         
         
         F_aligned.append(F_trial)
