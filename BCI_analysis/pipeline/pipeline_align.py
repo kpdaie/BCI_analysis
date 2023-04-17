@@ -252,11 +252,36 @@ def get_aligned_data(suite2p_path,
         print(F_trialwise[0].shape)
         if len(behavior_movie_names) != sum(source_data['trial_start']):
             #asdas
-            print('unequal trial number, aborting')
-            # here assume that trials were skipped from the beginning and/or end
-            # so instead of aborting, subtract the trial lengths from each other while
-            # pushing the trials in time, and find the one that has the minimum absolute value - that offset is the winner
-            return None
+            print('unequal trial number, aligning trials - ')
+            dt_ca = np.diff(np.where(source_data['trial_start'])[0])*source_data['si']
+            helper_td = np.vectorize(lambda x: x.total_seconds())
+            dt_behav = helper_td(np.diff(bpod_data['trial_start_times']))
+
+            offsets = range(len(dt_behav)-len(dt_ca)+1)
+            errors = []
+            for offset in offsets:
+                errors.append(np.abs(np.sum(dt_ca-dt_behav[offset:len(dt_ca)+offset])))
+            offset = np.argmin(errors)
+            print('offset is {} with an error of {} ms'.format(offset,np.round(errors[offset]*1000,3)))
+            needed_indices = np.arange(offset,len(dt_ca)+offset+1)
+            
+            bpod_data_old = bpod_data.copy()
+            trial_n_old = len(bpod_data_old['go_cue_times'])
+            for k in bpod_data.keys():
+                if len(bpod_data[k]) == trial_n_old:
+                    bpod_data[k] = np.asarray(bpod_data_old[k])[needed_indices]
+                else:
+                    print([k,len(bpod_data[k])])
+            
+            files_with_movies = []
+            behavior_movie_names = bpod_data['behavior_movie_name_list']
+            for i, k in enumerate(bpod_data['scanimage_file_names']):
+                # print(k)
+                if str(k) == 'no movie for this trial':
+                    files_with_movies.append(False)
+                else:
+                    files_with_movies.append(True)                        
+            behavior_movie_names = behavior_movie_names[files_with_movies]
         
     else:
         ca_data = np.load(os.path.join(sessionwise_data_path, mouse, mouse+"-"+session+"-"+FOV+".npy"), allow_pickle=True).tolist()
