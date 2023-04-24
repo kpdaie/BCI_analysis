@@ -230,7 +230,8 @@ def pybpod_dataframe_to_dict(data):
                  'trial_num':list(),
                  'threshold_crossing_times':list(),    
                  'behavior_movie_name_list':list(),
-                 'scanimage_message_list':list()
+                 'scanimage_message_list':list(),
+                 'photostim_times' : list()
                  }
 
     for key_now in data.keys():
@@ -257,19 +258,40 @@ def pybpod_dataframe_to_dict(data):
         trial_start_time = data['PC-TIME'][trial_start_idx]
         trial_end_time = data['PC-TIME'][trial_end_idx]
         go_cue_time = df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values#[0]#.index.to_numpy()[0]
+        go_cue_omission_time = df_trial.loc[(df_trial['MSG'] == 'GoCueOmission') & (df_trial['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values#[0]#.index.to_numpy()[0]
+        photostim_times = []
+        for photostim_i in range(100):
+            photostim_time = df_trial.loc[(df_trial['MSG'] == 'Response_photostim_{}'.format(photostim_i)) & (df_trial['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values#[0]#.index.to_numpy()[0]
+            photostim_times.append(photostim_time)
+        photostim_times = np.concatenate(photostim_times)
+        
         threshold_crossing_time = df_trial.loc[(df_trial['MSG'] == 'ResponseInRewardZone') & (df_trial['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values#[0]#.index.to_numpy()[0]
-        if len(go_cue_time) == 0:
+
+        if len(go_cue_time) == 0 and len(go_cue_omission_time) == 0:
             continue # no go cue no trial
+        if len(go_cue_time) == 0:
+            go_cue_time = [np.nan]
             
+        
+        
+        
             
         lick_left_times = df_trial.loc[data['var:WaterPort_L_ch_in'] == data['+INFO'],'BPOD-INITIAL-TIME'].values
-        lick_right_times = df_trial.loc[data['var:WaterPort_R_ch_in'] == data['+INFO'],'BPOD-INITIAL-TIME'].values
         lick_left_times_end = df_trial.loc[data['var:WaterPort_L_ch_out'] == data['+INFO'],'BPOD-INITIAL-TIME'].values
-        lick_right_times_end = df_trial.loc[data['var:WaterPort_R_ch_out'] == data['+INFO'],'BPOD-INITIAL-TIME'].values
         reward_left_times = df_trial.loc[(data['MSG'] == 'Reward_L') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values
-        reward_right_times = df_trial.loc[(data['MSG'] == 'Reward_R') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values
         autowater_left_times = df_trial.loc[(data['MSG'] == 'Auto_Water_L') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values
-        autowater_right_times = df_trial.loc[(data['MSG'] == 'Auto_Water_R') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values
+        try:
+            lick_right_times = df_trial.loc[data['var:WaterPort_R_ch_in'] == data['+INFO'],'BPOD-INITIAL-TIME'].values
+            lick_right_times_end = df_trial.loc[data['var:WaterPort_R_ch_out'] == data['+INFO'],'BPOD-INITIAL-TIME'].values
+            reward_right_times = df_trial.loc[(data['MSG'] == 'Reward_R') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values
+            autowater_right_times = df_trial.loc[(data['MSG'] == 'Auto_Water_R') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values
+        except:
+            lick_right_times  = []
+            lick_right_times_end  = []
+            reward_right_times  = []
+            autowater_right_times = []
+        
+
         try:
             ITI_start_times = df_trial.loc[(data['MSG'] == 'ITI') & (data['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values[0]
         except:
@@ -293,7 +315,7 @@ def pybpod_dataframe_to_dict(data):
         data_dict['threshold_crossing_times'].append(threshold_crossing_time)
         data_dict['behavior_movie_name_list'].append(behavior_movie_names)
         data_dict['scanimage_message_list'].append(scanimage_message)
-
+        data_dict['photostim_times'].append(photostim_times)
         for key_now in data.keys():
             if 'var:'in key_now:
                 data_dict[key_now.replace(':','_')].append(df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),key_now].values[0])
@@ -309,7 +331,6 @@ def pybpod_dataframe_to_dict(data):
             data_dict['time_to_hit'].append(np.nan)
     for key_now in data_dict.keys():
         data_dict[key_now] = np.asarray(data_dict[key_now])
-            
     return data_dict
         
 def add_zaber_info_to_pybpod_dict(behavior_dict,
