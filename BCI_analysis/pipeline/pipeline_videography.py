@@ -77,13 +77,12 @@ def extract_motion_energy_from_session(bpod_path,
 
     dlc_trial_list = []
     file_exist_list = []
-    bmn = behavior_movie_names[0]
-    residual_path = bmn[bmn.find(camera):].strip("'")
-    save_dir = os.path.join(*np.concatenate([[motion_energy_base_dir],residual_path.split('/')[:-1]]))
-    Path(save_dir).mkdir(parents=True, exist_ok=True)
     for bmn in behavior_movie_names: # read in all dlc files to calculate location of ROIs
         if camera not in bmn:
             continue
+        residual_path = bmn[bmn.find(camera):].strip("'")
+        save_dir = os.path.join(*np.concatenate([[motion_energy_base_dir],residual_path.split('/')[:-1]]))
+        Path(save_dir).mkdir(parents=True, exist_ok=True)
         dlc_file_name = bmn[bmn.find(camera)+len(camera)+1:].split("/") #[mouse, session_id, trial_id]
         dlc_folder = os.path.join(dlc_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
         trial_id = dlc_file_name[2][:-5]
@@ -92,7 +91,6 @@ def extract_motion_energy_from_session(bpod_path,
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
         dlc_trial_list.append(dlc_trial)
         
-        residual_path = bmn[bmn.find(camera):].strip("'")
         if os.path.exists(os.path.join(save_dir,residual_path.split('/')[-1][:-3]+'npy')):
             file_exist_list.append(True)
         else:
@@ -101,8 +99,11 @@ def extract_motion_energy_from_session(bpod_path,
         print('all files already exist, skipping motion energy export')
         return None
     else:
-        print('{}% of files exported, exporting motion energy of {}'.format(100*np.round(sum(file_exist_list) == len(file_exist_list),3),
+        try:
+            print('{}% of files exported, exporting motion energy of {}'.format(100*np.round(sum(file_exist_list) == len(file_exist_list),3),
                                                                            save_dir))
+        except:
+            print('exporting motion energy of {}'.format(save_dir))
         
         
 
@@ -131,10 +132,11 @@ def extract_motion_energy_from_session(bpod_path,
         if camera not in bmn:
             continue
         cutouts = {}
-
+        residual_path = bmn[bmn.find(camera):].strip("'")
+        save_dir = os.path.join(*np.concatenate([[motion_energy_base_dir],residual_path.split('/')[:-1]]))
         for roi in face_edge_point_markers.keys():
             cutouts[roi] = []
-        residual_path = bmn[bmn.find(camera):].strip("'")
+        
         video_path = os.path.join(raw_video_path,residual_path)
         cap = cv2.VideoCapture(video_path)
         while(cap.isOpened()):
@@ -168,7 +170,6 @@ def extract_motion_energy_from_session(bpod_path,
                     ax2.set_title(roi)
                 image_done = True
                 fig.savefig(os.path.join(save_dir,residual_path.split('/')[-1][:-3]+'jpg'))
-                asdasdsa
         # When everything done, release the video capture object
         cap.release()
         out_dict = {'motion_energy_traces':{},
@@ -176,7 +177,17 @@ def extract_motion_energy_from_session(bpod_path,
                    'edge_values':edge_values_dict,
                    }
         for i, roi in enumerate(face_edge_point_markers.keys()):
-            out_dict['motion_energy_traces'][roi] = np.mean(np.abs(np.diff(np.asarray(cutouts[roi],float),axis=0)),(1,2))
+            try:
+                out_dict['motion_energy_traces'][roi] = np.mean(np.abs(np.diff(np.asarray(cutouts[roi],float),axis=0)),(1,2))
+            except:
+                print('could not fit movie in memory, doing frame by frame')
+                out_dict['motion_energy_traces'][roi] = []
+                frame_prev = cutouts[roi][0]
+                for frame_i in np.arange(len(cutouts[roi])-1):
+                    frame_now = cutouts[roi][frame_i+1]
+                    out_dict['motion_energy_traces'][roi].append(np.mean(np.abs(frame_now-frame_prev)))
+                    frame_prev  = frame_now.copy()
+                out_dict['motion_energy_traces'][roi] = np.asarray(out_dict['motion_energy_traces'][roi])
         
         np.save(os.path.join(save_dir,residual_path.split('/')[-1][:-3]+'npy'),out_dict)
     
