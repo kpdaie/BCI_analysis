@@ -7,6 +7,7 @@ import pandas as pd
 from scipy import interpolate
 from tqdm import tqdm
 from BCI_analysis.io_bci.io_suite2p import sessionwise_to_trialwise, sessionwise_to_trialwise_simple
+from BCI_analysis.pipeline.pipeline_videography import extract_motion_energy_from_session
 try:
     import hdfdict # 
 except:
@@ -143,6 +144,7 @@ def get_aligned_data(suite2p_path,
                      sessionwise_data_path,
                      aligned_data_path,
                      motion_energy_base_dir,
+                     raw_video_path,
                      mouse = "BCI_26",
                      FOV = "FOV_04",
                      camera = "side",
@@ -197,6 +199,7 @@ def get_aligned_data(suite2p_path,
     F_aligned, DLC_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
                                     sessionwise_data_path, mouse, FOV, camera, session)
     """
+    only_up_to_reward = True
     if use_face_rhythm or match_with_face_rhythm:
         with open(os.path.join(face_rhythm_base_dir,mouse,session,"run_info.json")) as f:
             face_rhythm_metadata = json.load(f)
@@ -248,6 +251,7 @@ def get_aligned_data(suite2p_path,
         print('bpod trials: {}'.format(len(behavior_movie_names)))
         print('imaging trials: {}'.format(sum(source_data['trial_start'])))
         F_trialwise = sessionwise_to_trialwise_simple(F, source_data['trial_start'],max_frames = 'all')
+        reward_trialwise = sessionwise_to_trialwise_simple(source_data['reward'][:,np.newaxis].T, source_data['trial_start'],max_frames = 'all')
         print(len(F_trialwise))
         print(F_trialwise[0].shape)
         if len(behavior_movie_names) != sum(source_data['trial_start']):
@@ -301,6 +305,20 @@ def get_aligned_data(suite2p_path,
 
         F_trialwise = sessionwise_to_trialwise(F, ca_data['all_si_filenames'], ca_data['closed_loop_filenames'], 
                 ca_data['all_si_frame_nums'], ca_data['sampling_rate'], align_on="trial_start", max_frames="all")
+        reward_trace = np.zeros(F.shape[1])
+        trial_start_trace = np.zeros(F.shape[1])
+        trial_start_frame = np.asarray([0] + np.cumsum(ca_data['all_si_frame_nums']).tolist())
+        counter = 0
+        for i, filename in enumerate(ca_data['all_si_filenames']):
+            if not filename in ca_data['closed_loop_filenames']:
+                continue
+            start_frame = trial_start_frame[i]
+            trial_start_trace[start_frame] = 1
+            if len(ca_data['reward_times'][counter]) > 0:
+                start_frame += int(ca_data['reward_times'][counter]*ca_data['sampling_rate'])
+                reward_trace[start_frame] = 1
+            counter += 1
+        reward_trialwise = sessionwise_to_trialwise_simple(reward_trace[:,np.newaxis].T, trial_start_trace,max_frames = 'all')
         
 
     F_aligned = []
@@ -337,7 +355,13 @@ def get_aligned_data(suite2p_path,
         with open(trial_json) as f:
             trial_metadata = json.load(f) 
         F_trial = F_trialwise[i].T
-        # print(F_trial.shape)
+        if only_up_to_reward:
+            rew_trial = reward_trialwise[i].flatten()
+            if any(rew_trial>0):
+               # print('only used {} frames out of {} due to reward'.format(np.argmax(rew_trial),F_trial.shape[1]))
+                F_trial = F_trial[:,:np.argmax(rew_trial)]
+                
+            
 
         trial_csv = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("csv")][0]
         trial_json = [k for k in next(os.walk(dlc_folder))[2] if k.startswith(trial_id) and k.endswith("json")][0]
@@ -356,7 +380,19 @@ def get_aligned_data(suite2p_path,
         if add_motion_energy:
             motion_energy_folder = os.path.join(motion_energy_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
             motion_energy_fname = os.path.join(motion_energy_folder, trial_id+".npy")
-            motion_energy_dict = np.load(motion_energy_fname,allow_pickle = True).tolist()
+            try:
+                motion_energy_dict = np.load(motion_energy_fname,allow_pickle = True).tolist()
+            except:
+                print('extracting motion energy')
+                extract_motion_energy_from_session(bpod_path,
+                                                  dlc_base_dir,
+                                                  raw_video_path,
+                                                  motion_energy_base_dir,
+                                                  mouse,
+                                                  FOV,
+                                                  session,
+                                                  overwrite=False)
+                motion_energy_dict = np.load(motion_energy_fname,allow_pickle = True).tolist()
             for roi in motion_energy_dict['motion_energy_traces'].keys():
                 dlc_trial[roi,'x'] = np.concatenate([[motion_energy_dict['motion_energy_traces'][roi][0]],motion_energy_dict['motion_energy_traces'][roi]])
             
@@ -442,7 +478,7 @@ def get_aligned_data(suite2p_path,
             tt.append(trial_times[i])
         except:
             pass
-    print(trial_start_indices)                
+   # print(trial_start_indices)                
     if len(F_aligned) == 0:
         print(f"No data found, session {session}")
         return None
