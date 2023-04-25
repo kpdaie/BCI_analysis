@@ -10,7 +10,8 @@ def sessionwise_to_trialwise_simple(F,
                                     trial_start,
                                     max_frames=None,
                                     frames_after=None, 
-                                    frames_before=None):
+                                    frames_before=None,
+                                    include_next_trial = False):
     
     start_frames = np.where(trial_start)[0]
     end_frames = np.concatenate([np.where(trial_start)[0][1:],[len(trial_start)]])
@@ -24,6 +25,10 @@ def sessionwise_to_trialwise_simple(F,
         F_trialwise_closed_loop = np.ones((max_frames, F.shape[0], len(start_frames)))*np.nan
         counter = 0
         for start_frame,end_frame in zip(start_frames,end_frames):
+            
+            if include_next_trial:
+                end_frame = np.min([start_frame+frames_after,F.shape[1]-1])
+            #print([start_frame,end_frame])
 
             if end_frame - start_frame > frames_after:
                 end_frame = start_frame + frames_after
@@ -65,6 +70,12 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                 #print(start_frame, end_frame)
 
                 if align_on == "go_cue":
+                    if len(go_cue_times[counter]) == 0:
+                        counter += 1
+                        continue
+                    elif np.isnan(go_cue_times[counter][0]):
+                        counter += 1
+                        continue
                     start_frame += int(go_cue_times[counter]*fs)
                 if align_on == "reward":
                     if len(reward_times[counter]) == 0:
@@ -79,6 +90,7 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
 
 
         else:
+            needed_list = []
             max_frames = frames_after + frames_before
             F_trialwise_closed_loop = np.ones((max_frames, F.shape[0], len(closed_loop_filenames)))*np.nan
             counter = 0
@@ -89,6 +101,12 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                 end_frame = filename_start_frame[i+1]
 
                 if align_on == "go_cue":
+                    if len(go_cue_times[counter]) == 0:
+                        counter += 1
+                        continue
+                    elif np.isnan(go_cue_times[counter][0]):
+                        counter += 1
+                        continue
                     start_frame += int(go_cue_times[counter]*fs)
                 if align_on == "reward":
                     if len(reward_times[counter]) == 0:
@@ -105,8 +123,9 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                 else:
                     missing_frames_at_beginning = 0
                 F_trialwise_closed_loop[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+                needed_list.append(counter)
                 counter += 1
-
+            F_trialwise_closed_loop = F_trialwise_closed_loop[:,:,needed_list]
             return F_trialwise_closed_loop
 
 
@@ -239,7 +258,7 @@ def suite2p_to_npy(suite2p_path,
                         clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
                     except:
                         clt = []
-                    closed_loop_filenames = [k for k in filelist['file_name_list'] if k.lower().startswith("neuron") or k in clt] # TODO, we should pull out this information from the scanimage tiff header
+                    closed_loop_filenames = [k for k in filelist['file_name_list'] if k.lower().startswith("neuron") or k in clt or k.lower().startswith("condition") ] # TODO, we should pull out this information from the scanimage tiff header
                     #closed_loop_filenames = [k[0] for k in np.asarray(_scanimage_filenames)[_closed_loop_trial] if k[0].lower().startswith("neuron")]
 
                     frame_num = np.asarray(filelist['frame_num_list'])
@@ -277,18 +296,23 @@ def suite2p_to_npy(suite2p_path,
                     roi_centers = [(stat[i]['xpix'].mean(), stat[i]['ypix'].mean()) for i in range(len(stat))]
                     roi_centers = np.asarray(roi_centers)
                     idxi = 0
-                    while cn_idx[idxi] == None:
-                        idxi += 1
-                    if type(cn_idx[idxi]) == int:
-                        roi_centers_cn = roi_centers - roi_centers[cn_idx[0]]
-                        dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
-                    else:
+                    try:
+                        while cn_idx[idxi] == None:
+                            idxi += 1
+                        if type(cn_idx[idxi]) == int:
+                            roi_centers_cn = roi_centers - roi_centers[cn_idx[0]]
+                            dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
+                        else:
+                            dist = []
+                            for cn_idx_ in cn_idx[idxi]:
+                                roi_centers_cn = roi_centers - roi_centers[cn_idx_]
+                                dist_ = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
+                                dist.append(dist_)
+                    except:
+                        print('cn not found??')
                         dist = []
-                        for cn_idx_ in cn_idx[idxi]:
-                            roi_centers_cn = roi_centers - roi_centers[cn_idx_]
-                            dist_ = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
-                            dist.append(dist_)
-
+                        cn_idx=np.nan
+                                
                     if not os.path.isfile(behavior_fname):
                         print("No corresponding behavior data found for {}".format(session_date))
                         break
@@ -309,7 +333,7 @@ def suite2p_to_npy(suite2p_path,
 
                         threshold_crossing_times = bpod_zaber_data['threshold_crossing_times'][files_with_movies]
 
-                
+                        
                     dict_all = {'F_sessionwise': F,
                                 'F_trialwise_all': F_trialwise_all,
                                 'F_trialwise_closed_loop': F_trialwise_closed_loop,
@@ -339,7 +363,7 @@ def suite2p_to_npy(suite2p_path,
                                 'all_si_filenames': all_si_filenames,
                                 'all_si_frame_nums':frame_num,
                                 'closed_loop_filenames': closed_loop_filenames,
-                                'scanimage_filenames': bpod_zaber_data["scanimage_file_names"],
+                                'scanimage_filenames': np.asarray(bpod_zaber_data["scanimage_file_names"])[files_with_movies],
                                 'photon_counts' :photon_counts_dict,
                                 'f0_scalar':f0_scalar
                             }

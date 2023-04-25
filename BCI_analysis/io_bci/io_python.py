@@ -106,6 +106,7 @@ def read_sessionwise_npy(file_path):
                 'all_si_filenames': data["all_si_filenames"],
                 'closed_loop_filenames': data["closed_loop_filenames"],
                 'all_si_frame_nums':data['all_si_frame_nums'],
+                'scanimage_filenames':data['scanimage_filenames'],
                 'photon_counts':data['photon_counts'],
                 'f0_scalar':data['f0_scalar'],
             }
