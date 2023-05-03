@@ -1,0 +1,17 @@
+[MOHIT_LINUX]
+
+dlc_base_dir = "/home/labadmin/Github/BCI_analysis/BCI_analysis/bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/"
+bpod_path = "/home/labadmin/Github/BCI_analysis/BCI_analysis/bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/"
+suite2p_path = "/home/labadmin/Github/BCI_analysis/BCI_analysis/bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/"
+raw_suite2p = "/home/labadmin/Github/BCI_analysis/BCI_analysis/bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/"
+save_path = "/home/labadmin/Github/BCI_analysis/BCI_analysis/bucket/Data/Calcium_imaging/sessionwise_tba/"
+
+[MOHIT_VERTEX]
+
+dlc_base_dir = "/home/jupyter/bucket/Data/Behavior_videos/DLC_output/Bergamo-2P-Photostim/"
+bpod_path = "/home/jupyter/bucket/Data/Behavior/BCI_exported/Bergamo-2P-Photostim/"
+suite2p_path = "/home/jupyter/bucket/Data/Calcium_imaging/suite2p/Bergamo-2P-Photostim/"
+raw_suite2p = "/home/jupyter/bucket/Data/Calcium_imaging/raw/Bergamo-2P-Photostim/"
+save_path = "/home/jupyter/bucket/Data/Calcium_imaging/sessionwise_tba"
+
+[MARTON]
