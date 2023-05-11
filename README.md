@@ -2,16 +2,15 @@
 
 ### Install
 To use as a package: 
+- create environment
 - clone from github 
-```
-git clone https://github.com/kpdaie/BCI_analysis.git
-```
 - enter to the root directory of this repo 
-```
-cd BCI_analysis
-```
 - and pip install the package:
 ```
+conda create --name bci_analysis python=3.8
+conda activate bci_analysis
+git clone https://github.com/kpdaie/BCI_analysis.git
+cd BCI_analysis
 pip install -e .
 ```
 
