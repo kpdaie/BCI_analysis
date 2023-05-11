@@ -12,6 +12,7 @@ conda activate bci_analysis
 git clone https://github.com/kpdaie/BCI_analysis.git
 cd BCI_analysis
 pip install -e .
+
 ```
 
 
