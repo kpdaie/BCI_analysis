@@ -11,5 +11,6 @@ setup(
                       'umap-learn',# for axon imaging, temporary
                       'scikit-learn',
                       'matplotlib',
-                      'rastermap']
+                      'rastermap',
+                      'suite2p']
     )
