@@ -7,7 +7,7 @@ To use as a package:
 - enter to the root directory of this repo 
 - and pip install the package:
 ```
-conda create --name bci_analysis python=3.8
+conda create --name bci_analysis python=3.8 -y
 conda activate bci_analysis
 git clone https://github.com/kpdaie/BCI_analysis.git
 cd BCI_analysis
