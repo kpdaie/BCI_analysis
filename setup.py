@@ -7,5 +7,10 @@ setup(
                       'pandas',
                       'mat73',
                       'scanimage_tiff_reader',
-                      'pybpod']
+                      'pybpod',
+                      'umap-learn',# for axon imaging, temporary
+                      'scikit-learn',
+                      'matplotlib',
+                      'rastermap',
+                      'suite2p']
     )
