@@ -43,7 +43,53 @@ def sessionwise_to_trialwise_simple(F,
 
     return F_trialwise_closed_loop
 
-        
+def sessionwise_to_trialwise_simple_exclude_reward(F, 
+                                                   trial_start,
+                                                   reward_start,
+                                                   max_frames=None,
+                                                   frames_after=None, 
+                                                   frames_before=None,
+                                                   invert = False,
+                                                  offset_to_keep = 0):
+    
+    start_frames = np.where(trial_start)[0]
+    end_frames = np.concatenate([np.where(trial_start)[0][1:],[len(trial_start)]])
+    reward_frames = np.where(reward_start)[0]
+    if max_frames == "all":
+        print("Since max_frames is all, this function will return a list of F trialwise as all trials have different lengths")
+        F_trialwise_closed_loop = []
+        for start_frame,end_frame in zip(start_frames,end_frames):
+            if any((reward_frames>start_frame)& (reward_frames<end_frame)):
+                end_frame = reward_frames[(reward_frames>start_frame)& (reward_frames<end_frame)][0]
+            F_trialwise_closed_loop.append(F[:, start_frame:end_frame].T)
+    else:
+        max_frames = frames_after + frames_before
+        F_trialwise_closed_loop = np.ones((max_frames, F.shape[0], len(start_frames)))*np.nan
+        counter = 0
+        for start_frame,end_frame in zip(start_frames,end_frames):
+            if any((reward_frames>start_frame)& (reward_frames<end_frame)):
+                if invert:
+                    reward_frame = reward_frames[(reward_frames>start_frame)& (reward_frames<end_frame)][0]-start_frame
+                else:
+                    end_frame = reward_frames[(reward_frames>start_frame)& (reward_frames<end_frame)][0] + offset_to_keep
+            elif invert:
+                reward_frame = end_frame
+            #print(end_frame)
+            if end_frame - start_frame > frames_after:
+                end_frame = start_frame + frames_after
+            start_frame = start_frame - frames_before # taking 40 time points before trial starts
+            if start_frame<0: # taking care of edge at the beginning
+                missing_frames_at_beginning = np.abs(start_frame)
+                start_frame = 0
+            else:
+                missing_frames_at_beginning = 0
+            F_trialwise_closed_loop[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+            if invert:
+                F_trialwise_closed_loop[frames_before:frames_before+reward_frame, :, counter] = np.nan
+                
+            counter += 1
+
+    return F_trialwise_closed_loop
 
 def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_num, fs, align_on = "go_cue", go_cue_times=None, reward_times=None, max_frames=None, frames_after=None, frames_before=None):
     """
@@ -254,6 +300,7 @@ def suite2p_to_npy(suite2p_path,
                                                                                                  os.path.join(session_path, "ops.npy"), 
                                                                                                  os.path.join(fov_path, "stat.npy"), 
                                                                                                  plot=False)
+                    
                     try:
                         clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
                     except:
@@ -299,7 +346,7 @@ def suite2p_to_npy(suite2p_path,
                     try:
                         while cn_idx[idxi] == None:
                             idxi += 1
-                        if type(cn_idx[idxi]) == int:
+                        if type(cn_idx[idxi]) == int or type(cn_idx[idxi]) ==np.int64 :
                             roi_centers_cn = roi_centers - roi_centers[cn_idx[0]]
                             dist = [np.sqrt(roi_centers_cn[i][0]**2 + roi_centers_cn[i][1]**2) for i in range(len(roi_centers_cn))]
                         else:
