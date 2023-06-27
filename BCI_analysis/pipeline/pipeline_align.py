@@ -160,7 +160,8 @@ def get_aligned_data(suite2p_path,
                      add_motion_energy = False,
                      face_rhythm_base_dir = None,
                      use_face_rhythm=False,
-                     match_with_face_rhythm = False):
+                     match_with_face_rhythm = False,
+                     only_up_to_reward = False):
     """
     This script returns aligned F (raw flouroscence trace) and DLC data. 
     a. If there are multiple movie files a trial they are thrown out. 
@@ -199,7 +200,7 @@ def get_aligned_data(suite2p_path,
     F_aligned, DLC_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
                                     sessionwise_data_path, mouse, FOV, camera, session)
     """
-    only_up_to_reward = True
+    
     if use_face_rhythm or match_with_face_rhythm:
         with open(os.path.join(face_rhythm_base_dir,mouse,session,"run_info.json")) as f:
             face_rhythm_metadata = json.load(f)
