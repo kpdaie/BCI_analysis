@@ -305,6 +305,7 @@ def suite2p_to_npy(suite2p_path,
                         clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
                     except:
                         clt = []
+                    
                     closed_loop_filenames = [k for k in filelist['file_name_list'] if k.lower().startswith("neuron") or k in clt or k.lower().startswith("condition") ] # TODO, we should pull out this information from the scanimage tiff header
                     #closed_loop_filenames = [k[0] for k in np.asarray(_scanimage_filenames)[_closed_loop_trial] if k[0].lower().startswith("neuron")]
 
@@ -370,7 +371,11 @@ def suite2p_to_npy(suite2p_path,
                             if str(k) == 'no movie for this trial':
                                 files_with_movies.append(False)
                             else:
-                                files_with_movies.append(True)                        
+                                if len(k)== 1:
+                                    files_with_movies.append(True)                        
+                                else:
+                                    print('multiple movies for a behavior trial, skipped: {}'.format(k))
+                                    files_with_movies.append(False)                        
                         trial_st = bpod_zaber_data['trial_start_times'][files_with_movies]    
                         trial_et = bpod_zaber_data['trial_end_times'][files_with_movies]
                         gocue_t = bpod_zaber_data['go_cue_times'][files_with_movies]
@@ -380,6 +385,14 @@ def suite2p_to_npy(suite2p_path,
 
                         threshold_crossing_times = bpod_zaber_data['threshold_crossing_times'][files_with_movies]
 
+                        scanimage_filenames = np.asarray(bpod_zaber_data["scanimage_file_names"])[files_with_movies]
+                        needed_cn_indices = []
+                        for clt_ in _scanimage_filenames:
+                            if clt_ in scanimage_filenames:
+                                needed_cn_indices.append(True)
+                            else:
+                                needed_cn_indices.append(False)
+                        cn_idx = np.asarray(cn_idx)[np.asarray(needed_cn_indices)]
                         
                     dict_all = {'F_sessionwise': F,
                                 'F_trialwise_all': F_trialwise_all,
@@ -410,7 +423,7 @@ def suite2p_to_npy(suite2p_path,
                                 'all_si_filenames': all_si_filenames,
                                 'all_si_frame_nums':frame_num,
                                 'closed_loop_filenames': closed_loop_filenames,
-                                'scanimage_filenames': np.asarray(bpod_zaber_data["scanimage_file_names"])[files_with_movies],
+                                'scanimage_filenames': scanimage_filenames,
                                 'photon_counts' :photon_counts_dict,
                                 'f0_scalar':f0_scalar
                             }
