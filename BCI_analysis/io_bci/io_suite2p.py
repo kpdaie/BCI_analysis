@@ -306,7 +306,7 @@ def create_BCI_F(Ftrace,ops,stat):
             centroidX.append(np.mean(stat[i]['xpix']))
             centroidY.append(np.mean(stat[i]['ypix']))
     return F, Fraw, dff,centroidX, centroidY
-                
+os.walk             
 
 def generate_canned_sessions(suite2p_path,
                              raw_data_path,
@@ -345,23 +345,28 @@ def generate_canned_sessions(suite2p_path,
             stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
 
             if session_list is None:
-                session_list = next(os.walk(fov_path))[1]
+                session_list_ = next(os.walk(fov_path))[1]
+            else:
+                session_list = session_list_
 
-            for session_date in session_list:
+            for session_date in session_list_:
                 if session_date == "Z-stacks":
                     continue
                 session_save_path = os.path.join(mouse_save_path, f"{mouse}-{session_date}-{fov}.npy")
                 if os.path.exists(session_save_path) and overwrite==False:
                     print(f"Session already exists at {session_save_path}, and overwrite=False")
-                    return None
+                    continue
                 print(f"FOV: {fov}, Session Date: {session_date}")
-                
-                dict_all = generate_canned_session(suite2p_path,
-                                                   mouse,
-                                                   fov,
-                                                   session_date,
-                                                   behavior_data_path)
-                np.save(session_save_path, dict_all)
+                try:
+                    dict_all = generate_canned_session(suite2p_path,
+                                                       mouse,
+                                                       fov,
+                                                       session_date,
+                                                       behavior_data_path)
+                    if type(dict_all) == dict:
+                        np.save(session_save_path, dict_all)
+                except:
+                    print('error saving {}'.format(os.path.join(fov_path, session_date)))
                     
     
     
@@ -375,7 +380,7 @@ def generate_canned_session(suite2p_path,
     session_path = os.path.join(fov_path, session_date)
     if not os.path.isfile(os.path.join(session_path, "ops.npy")):
         print(f"No ops.npy found in {session_path}, aborting")
-       # return None
+        return None
     stat =  np.load(os.path.join(fov_path, "stat.npy"),allow_pickle = True).tolist()
     iscell = np.ones(len(stat))
     ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
@@ -384,7 +389,6 @@ def generate_canned_session(suite2p_path,
     fs = ops['fs']
 
     data = dict()
-        #siHeader = np.load(folder + r'/suite2p_BCI/plane0/siHeader.npy', allow_pickle=True).tolist()
     # basic metadata
     data['dt_si'] = 1/fs
     data['trace_corr'] = np.corrcoef(F.T, rowvar=False)
@@ -455,9 +459,9 @@ def generate_canned_session(suite2p_path,
 
 
     # get conditioning & preconditioningpre-conditioning
-    for minuniquecnnum,cnidx,suffix in zip([1,0],[0,-1],['_precond','']):
+    for minuniquecnnum,cnidx,suffix,parent_dict_name in zip([1,0],[0,-1],['',''],['preconditioning','']):
         if len(uniquecns)>minuniquecnnum:
-
+            data_ = {}
             cn_prev = uniquecns[cnidx]  
             closed_loop_indices_needed = (np.asarray(cn_idx) == None) == False
             closed_loop_indices = np.asarray(cn_idx)[closed_loop_indices_needed]==cn_prev
@@ -499,17 +503,24 @@ def generate_canned_session(suite2p_path,
             lickport_step_trace[np.concatenate(lickport_step_indices)]+=1
             ops_temp = {'frames_per_file': np.asarray(frame_per_file_now)}
             #print(ops_temp)
-            data['F'+suffix], data['Fraw'+suffix],data['df_closedloop'+suffix],data['centroidX'+suffix],data['centroidY'+suffix] = create_BCI_F(F[:,framenums],ops_temp,stat);  
-            data['Ftrace'+suffix] = F[:,framenums]
-            data['dist'+suffix] = dist_from_cn[np.where(all_si_filenames == closed_loop_filenames[0])[0][0]]
-            data['conditioned_neuron_coordinates'+suffix] = [stat[cn_prev]['xpix'],stat[cn_prev]['ypix']]
-            data['conditioned_neuron'+suffix] = cn_prev
-            data['reward_time'+suffix] = reward_trace
-            data['step_time'+suffix] = lickport_step_trace
-            data['trial_start'+suffix] = trial_start_trace
-            data['lick_time'+suffix] = lick_trace
-            data['threshold_crossing_time'+suffix] = threshold_crossing_trace
-
+            data_['F'+suffix], data_['Fraw'+suffix],data_['df_closedloop'+suffix],data_['centroidX'+suffix],data_['centroidY'+suffix] = create_BCI_F(F[:,framenums],ops_temp,stat);  
+            data_['Ftrace'+suffix] = F[:,framenums]
+            data_['dist'+suffix] = dist_from_cn[np.where(all_si_filenames == closed_loop_filenames[0])[0][0]]
+            data_['conditioned_neuron_coordinates'+suffix] = [stat[cn_prev]['xpix'],stat[cn_prev]['ypix']]
+            data_['conditioned_neuron'+suffix] = cn_prev
+            data_['reward_time'+suffix] = reward_trace
+            data_['step_time'+suffix] = lickport_step_trace
+            data_['trial_start'+suffix] = trial_start_trace
+            data_['lick_time'+suffix] = lick_trace
+            data_['threshold_crossing_time'+suffix] = threshold_crossing_trace
+            
+            if parent_dict_name == '':
+                for key in data_.keys():
+                    data[key] = data_[key]
+            else:
+                data[parent_dict_name] = {}
+                for key in data_.keys():
+                    data[parent_dict_name][key] = data_[key]
     # get photostim
     if 'photostim' in os.listdir(session_path):
         photostim_dict = np.load(os.path.join(session_path,'photostim','photostim_dict.npy'),allow_pickle = True).tolist() 
@@ -600,9 +611,11 @@ def suite2p_to_npy(suite2p_path,
             stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
 
             if session_list is None:
-                session_list = next(os.walk(fov_path))[1]
+                session_list_ = next(os.walk(fov_path))[1]
+            else:
+                session_list = session_list_
 
-            for session_date in session_list:
+            for session_date in session_list_:
                 if session_date == "Z-stacks":
                     continue
 
@@ -622,7 +635,9 @@ def suite2p_to_npy(suite2p_path,
                     
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+
                     photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
+
 					#f0_scalar = np.mean(np.load(os.path.join(session_path,'F0.npy')),1)                    
                     f0_scalar = np.percentile(F0[:,:int(F0.shape[1]/2)],10,axis = 1)
                     
