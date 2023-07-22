@@ -203,6 +203,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
     for roi_idx_now in roi_indices:    
         if roi_idx_now is None:
             cond_s2p_idx.append(None)
+            distances_all.append(None)
             continue
         if type(roi_idx_now) == list: # multi-CN
             med_list = list()

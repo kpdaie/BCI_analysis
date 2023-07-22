@@ -5,6 +5,87 @@ import json
 from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
 from tqdm import tqdm
 
+def nan_helper(y):
+    """Helper to handle indices and logical indices of NaNs.
+
+    Input:
+        - y, 1d numpy array with possible NaNs
+    Output:
+        - nans, logical indices of NaNs
+        - index, a function, with signature indices= index(logical_indices),
+          to convert logical indices of NaNs to 'equivalent' indices
+    Example:
+        >>> # linear interpolation of NaNs
+        >>> nans, x= nan_helper(y)
+        >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+        
+    Source:
+        https://stackoverflow.com/questions/6518811/interpolate-nan-values-in-a-numpy-array
+    """
+
+    return np.isnan(y), lambda z: z.nonzero()[0]
+def remove_stim_artefacts(F,Fneu,frames_per_file):
+    """
+    removing stimulation artefacts with linear interpolation
+    and nan-ing out tripped PMT traces
+
+    Parameters
+    ----------
+    F : matrix of float
+        Fluorescence of ROIs
+    Fneu : matrix of float
+        fluorescence of neuropil
+    frames_per_file : list of int
+        # of frames in each file (where the photostim happens)
+
+    Returns
+    -------
+    F : matrix of float
+        corrected fluorescence of ROIs
+    Fneu : matrix of float
+        corrected fluorescence of neuropil
+
+    """
+    artefact_indices = []
+    fneu_mean = np.mean(Fneu,0)
+    
+    for stim_idx in np.concatenate([[0],np.cumsum(frames_per_file)[:-1]]):
+        idx_now = []
+        if stim_idx>0 and fneu_mean[stim_idx-2]*1.1<fneu_mean[stim_idx-1]:
+            idx_now.append(stim_idx-1)
+        idx_now.append(stim_idx)
+        if stim_idx<len(fneu_mean)-2 and fneu_mean[stim_idx+2]*1.1<fneu_mean[stim_idx+1]:
+            idx_now.append(stim_idx+1)
+        artefact_indices.append(idx_now)
+    
+    f_std = np.std(F,0)
+    pmt_off_indices = f_std<np.median(f_std)-3*np.std(f_std)
+    pmt_off_edges = np.diff(np.concatenate([pmt_off_indices,[0]]))
+    pmt_off_indices[pmt_off_edges!=0] = 1 #dilate 1
+    pmt_off_edges = np.diff(np.concatenate([[0],pmt_off_indices,[0]]))
+    starts = np.where(pmt_off_edges==1)[0]
+    ends = np.where(pmt_off_edges==-1)[0]
+    lengths = ends-starts
+    for idx in np.where(lengths<=10)[0]:
+        pmt_off_indices[starts[idx]:ends[idx]]=0
+    
+    
+    F_ = F.copy()
+    F_[:,np.concatenate(artefact_indices)]=np.nan
+    for f in F_:
+        nans, x= nan_helper(f)
+        f[nans]= np.interp(x(nans), x(~nans), f[~nans])
+        f[pmt_off_indices] = np.nan
+    F = F_
+    
+    Fneu_ = Fneu.copy()
+    Fneu_[:,np.concatenate(artefact_indices)]=np.nan
+    for f in Fneu_:
+        nans, x= nan_helper(f)
+        f[nans]= np.interp(x(nans), x(~nans), f[~nans])
+        f[pmt_off_indices] = np.nan
+    Fneu = Fneu_
+    return F, Fneu
 
 def sessionwise_to_trialwise_simple(F, 
                                     trial_start,
@@ -176,6 +257,267 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
 
 
 
+        
+
+                
+def create_BCI_F(Ftrace,ops,stat):
+    F_trial_strt = [];
+    Fraw_trial_strt = [];
+
+    strt = 0;
+    dff = 0*Ftrace
+    for i in range(np.shape(Ftrace)[0]):
+        bl = np.std(Ftrace[i,:])
+        dff[i,:] = (Ftrace[i,:] - bl)/bl
+
+    for i in range(len(ops['frames_per_file'])):
+        ind = list(range(strt,strt+ops['frames_per_file'][i]))   
+        f = dff[:,ind]
+        F_trial_strt.append(f)
+        f = Ftrace[:,ind]
+        Fraw_trial_strt.append(f)
+        strt = ind[-1]+1
+
+
+    F = np.full((240,np.shape(Ftrace)[0],len(ops['frames_per_file'])),np.nan)#HARD CODED
+    Fraw = np.full((240,np.shape(Ftrace)[0],len(ops['frames_per_file'])),np.nan)#HARD CODED
+    pre = np.full((np.shape(Ftrace)[0],40),np.nan)#HARD CODED
+    for i in range(len(ops['frames_per_file'])):
+        f = F_trial_strt[i]
+        fraw = Fraw_trial_strt[i]
+        if i > 0:
+            pre = F_trial_strt[i-1][:,-40:] #HARD CODED
+        pad = np.full((np.shape(Ftrace)[0],200),np.nan) # HARD CODED
+        f = np.concatenate((pre,f),axis = 1)
+        f = np.concatenate((f,pad),axis = 1)
+        f = f[:,0:240] # HARD CODED
+        F[:,:,i] = np.transpose(f)
+
+
+        fraw = np.concatenate((pre,fraw),axis = 1)
+        fraw = np.concatenate((fraw,pad),axis = 1)
+        fraw = fraw[:,0:240] # HARDCODED
+        Fraw[:,:,i] = np.transpose(fraw)
+        centroidX = []
+        centroidY = []
+        dist = []
+
+        for i in range(len(stat)):
+            centroidX.append(np.mean(stat[i]['xpix']))
+            centroidY.append(np.mean(stat[i]['ypix']))
+    return F, Fraw, dff,centroidX, centroidY
+                
+
+def generate_canned_sessions(suite2p_path,
+                             raw_data_path,
+                             behavior_data_path,
+                             save_path,
+                             overwrite=False,
+                             mouse_list=None,
+                             fov_list=None, 
+                             session_list=None):
+    
+    if mouse_list is None:
+        mouse_list = os.listdir(suite2p_path)
+    if type(mouse_list) == str:
+        mouse_list = mouse_list.split()
+    
+    for mouse in mouse_list:
+        suite2p_data = os.path.join(suite2p_path, mouse)
+        raw_suite2p = os.path.join(raw_data_path, mouse)
+        behavior_data_path = os.path.join(behavior_data_path)
+        mouse_save_path = os.path.join(save_path, mouse)
+
+        os.makedirs(mouse_save_path, exist_ok=True)
+
+        if fov_list is None:
+            fov_list = [k for k in os.listdir(suite2p_data) if k[-2:].isdigit()] # For BCI_29 there exists folders other than FOV_0x
+            print(fov_list)
+
+        for fov in fov_list:
+            fov_path = os.path.join(suite2p_data, fov)
+            try:
+                mean_image = np.load(os.path.join(fov_path, "mean_image.npy")) #TODO the mean image should come from the session and not from the FOV
+            except OSError as e:
+                print(f"Files Not present for this {fov}, skipping")
+                continue
+            max_image = np.load(os.path.join(fov_path, "max_image.npy"))#TODO the max image should come from the session and not from the FOV
+            stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
+
+            if session_list is None:
+                session_list = next(os.walk(fov_path))[1]
+
+            for session_date in session_list:
+                if session_date == "Z-stacks":
+                    continue
+                session_save_path = os.path.join(mouse_save_path, f"{mouse}-{session_date}-{fov}.npy")
+                if os.path.exists(session_save_path) and overwrite==False:
+                    print(f"Session already exists at {session_save_path}, and overwrite=False")
+                    return None
+                print(f"FOV: {fov}, Session Date: {session_date}")
+                
+                dict_all = generate_canned_session(suite2p_path,
+                                                   mouse,
+                                                   fov,
+                                                   session_date,
+                                                   behavior_data_path)
+                np.save(session_save_path, dict_all)
+                    
+    
+    
+def generate_canned_session(suite2p_path,
+                            mouse,
+                            fov,
+                            session_date,
+                            behavior_data_path):
+    
+    fov_path = os.path.join(suite2p_path, mouse,fov)
+    session_path = os.path.join(fov_path, session_date)
+    if not os.path.isfile(os.path.join(session_path, "ops.npy")):
+        print(f"No ops.npy found in {session_path}, aborting")
+       # return None
+    stat =  np.load(os.path.join(fov_path, "stat.npy"),allow_pickle = True).tolist()
+    iscell = np.ones(len(stat))
+    ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
+    F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
+    F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+    fs = ops['fs']
+
+    data = dict()
+        #siHeader = np.load(folder + r'/suite2p_BCI/plane0/siHeader.npy', allow_pickle=True).tolist()
+    # basic metadata
+    data['dt_si'] = 1/fs
+    data['trace_corr'] = np.corrcoef(F.T, rowvar=False)
+    data['iscell'] = iscell
+    # metadata
+    data['dat_file'] = session_path
+    data['session'] = session_date
+    data['mouse'] = mouse
+    data['fov'] = fov
+
+
+
+    # identify trials with imaging & get CNs
+
+    with open(os.path.join(session_path, "filelist.json")) as json_file:
+        filelist = json.load(json_file)   
+
+    all_si_filenames = filelist['file_name_list']
+    all_si_frame_nums = np.asarray(filelist['frame_num_list'])
+    behavior_fname = os.path.join(behavior_data_path,mouse, f"{session_date}-bpod_zaber.npy")
+    cn_idx,_closed_loop_trial,_scanimage_filenames,dist_from_cn = find_conditioned_neuron_idx(behavior_fname, 
+                                                                                 os.path.join(session_path, "ops.npy"), 
+                                                                                 os.path.join(fov_path, "stat.npy"), 
+                                                                                 plot=False,
+                                                                                 return_distances = True)
+
+
+    bpod_zaber_data = np.load(behavior_fname, allow_pickle=True).tolist()
+    files_with_movies = []
+    for k in bpod_zaber_data['scanimage_file_names']:
+        if str(k) == 'no movie for this trial':
+            files_with_movies.append(False)
+        else:
+            if len(k)== 1:
+                files_with_movies.append(True)                        
+            else:
+                print('multiple movies for a behavior trial, skipped: {}'.format(k))
+                files_with_movies.append(False)    
+
+    trial_st = bpod_zaber_data['trial_start_times'][files_with_movies]    
+    trial_et = bpod_zaber_data['trial_end_times'][files_with_movies]
+    gocue_t = bpod_zaber_data['go_cue_times'][files_with_movies]
+    trial_times = [(trial_et[i]-trial_st[i]).total_seconds() for i in range(len(trial_st))]
+    trial_hit = bpod_zaber_data['trial_hit'][files_with_movies]
+    lick_L = bpod_zaber_data['lick_L'][files_with_movies]
+    reward_L = bpod_zaber_data['reward_L'][files_with_movies]
+    threshold_crossing_times = bpod_zaber_data['threshold_crossing_times'][files_with_movies]
+    lickport_steps = bpod_zaber_data['zaber_move_forward'][files_with_movies]
+
+    closed_loop_scanimage_filenames = np.asarray(bpod_zaber_data["scanimage_file_names"])[files_with_movies]
+    needed_cn_indices = []
+    for clt_ in _scanimage_filenames:
+        if clt_ in closed_loop_scanimage_filenames:
+            needed_cn_indices.append(True)
+        else:
+            needed_cn_indices.append(False)
+
+    cn_idx = np.asarray(cn_idx)[np.asarray(needed_cn_indices)]
+    dist_from_cn = np.asarray(dist_from_cn)[np.asarray(needed_cn_indices)]
+    scanimage_filenames = np.asarray(_scanimage_filenames)[np.asarray(needed_cn_indices)]
+    uniquecns = np.unique(np.asarray(cn_idx)[(cn_idx==None) ==False])
+    print('{} conditioned neurons found'.format(len(uniquecns)))
+
+
+    # get the spontaneous
+    end_framenum_spontaneous = np.sum(np.asarray(all_si_frame_nums)[:np.where(np.asarray(all_si_filenames) ==closed_loop_scanimage_filenames[0])[0][0]])
+    data['spont'] = F[:,:end_framenum_spontaneous] 
+
+
+    # get conditioning & preconditioningpre-conditioning
+    for minuniquecnnum,cnidx,suffix in zip([1,0],[0,-1],['_precond','']):
+        if len(uniquecns)>minuniquecnnum:
+
+            cn_prev = uniquecns[cnidx]  
+            closed_loop_indices_needed = (np.asarray(cn_idx) == None) == False
+            closed_loop_indices = np.asarray(cn_idx)[closed_loop_indices_needed]==cn_prev
+            closed_loop_filenames = scanimage_filenames[closed_loop_indices_needed][closed_loop_indices]
+            framenums = []
+            frame_per_file_now = []
+            reward_indices = []
+            go_cue_indices = []
+            trial_start_indices = []
+            threshold_crossing_indices = []
+            lick_indices = []
+            lickport_step_indices = []
+            frames_so_far  = 0
+            for filename_now in closed_loop_filenames:
+                idx = np.where(all_si_filenames == filename_now)[0][0]
+                start_frame = np.sum(all_si_frame_nums[:idx])
+                framenums.append(np.arange(all_si_frame_nums[idx])+start_frame)
+                frame_per_file_now.append(all_si_frame_nums[idx])
+                idx_behavior = np.where(closed_loop_scanimage_filenames == filename_now)[0][0]
+                reward_indices.append(np.asarray(np.asarray(reward_L[idx_behavior])*fs,int)+frames_so_far)
+                go_cue_indices.append(np.asarray(np.asarray(gocue_t[idx_behavior])*fs,int)+frames_so_far)
+                trial_start_indices.append([frames_so_far])
+                threshold_crossing_indices.append(np.asarray(np.asarray(threshold_crossing_times[idx_behavior])*fs,int)+frames_so_far)
+                lick_indices.append(np.asarray(np.asarray(lick_L[idx_behavior])*fs,int)+frames_so_far)
+                lickport_step_indices.append(np.asarray(np.asarray(lickport_steps[idx_behavior])*fs,int)+frames_so_far)
+                frames_so_far = len(np.concatenate(framenums))
+            framenums = np.concatenate(framenums)
+            trial_start_trace = np.zeros_like(framenums)
+            trial_start_trace[np.concatenate(trial_start_indices)]+=1
+            reward_trace = np.zeros_like(framenums)
+            reward_trace[np.concatenate(reward_indices)]+=1
+            go_cue_trace = np.zeros_like(framenums)
+            go_cue_trace[np.concatenate(go_cue_indices)]+=1
+            threshold_crossing_trace = np.zeros_like(framenums)
+            threshold_crossing_trace[np.concatenate(threshold_crossing_indices)]+=1
+            lick_trace = np.zeros_like(framenums)
+            lick_trace[np.concatenate(lick_indices)]+=1
+            lickport_step_trace = np.zeros_like(framenums)
+            lickport_step_trace[np.concatenate(lickport_step_indices)]+=1
+            ops_temp = {'frames_per_file': np.asarray(frame_per_file_now)}
+            #print(ops_temp)
+            data['F'+suffix], data['Fraw'+suffix],data['df_closedloop'+suffix],data['centroidX'+suffix],data['centroidY'+suffix] = create_BCI_F(F[:,framenums],ops_temp,stat);  
+            data['Ftrace'+suffix] = F[:,framenums]
+            data['dist'+suffix] = dist_from_cn[np.where(all_si_filenames == closed_loop_filenames[0])[0][0]]
+            data['conditioned_neuron_coordinates'+suffix] = [stat[cn_prev]['xpix'],stat[cn_prev]['ypix']]
+            data['conditioned_neuron'+suffix] = cn_prev
+            data['reward_time'+suffix] = reward_trace
+            data['step_time'+suffix] = lickport_step_trace
+            data['trial_start'+suffix] = trial_start_trace
+            data['lick_time'+suffix] = lick_trace
+            data['threshold_crossing_time'+suffix] = threshold_crossing_trace
+
+    # get photostim
+    if 'photostim' in os.listdir(session_path):
+        photostim_dict = np.load(os.path.join(session_path,'photostim','photostim_dict.npy'),allow_pickle = True).tolist() 
+        for key in photostim_dict.keys():
+            data[key] = photostim_dict[key]
+    
+    return data
+
 
 
 def suite2p_to_npy(suite2p_path, 
@@ -299,7 +641,7 @@ def suite2p_to_npy(suite2p_path,
                     cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
                                                                                                  os.path.join(session_path, "ops.npy"), 
                                                                                                  os.path.join(fov_path, "stat.npy"), 
-                                                                                                 plot=False)
+                                                                                                 plot=True)
                     
                     try:
                         clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
@@ -430,3 +772,4 @@ def suite2p_to_npy(suite2p_path,
                     #%%
                     np.save(session_save_path, dict_all)
                     print(f"Saved to {session_save_path}")
+                    
