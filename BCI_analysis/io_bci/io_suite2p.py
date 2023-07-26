@@ -87,6 +87,38 @@ def remove_stim_artefacts(F,Fneu,frames_per_file):
     Fneu = Fneu_
     return F, Fneu
 
+def remove_PMT_trips(F):
+    """
+    nan-ing out tripped PMT traces
+
+    Parameters
+    ----------
+    F : matrix of float
+        Fluorescence of ROIs
+        # of frames in each file (where the photostim happens)
+
+    Returns
+    -------
+    F : matrix of float
+        corrected fluorescence of ROIs
+    Fneu : matrix of float
+        corrected fluorescence of neuropil
+
+    """
+
+    f_std = np.std(F,0)
+    pmt_off_indices = f_std<np.median(f_std)-3*np.std(f_std[(f_std>np.percentile(f_std,5)) & (f_std<np.percentile(f_std,95))])
+    pmt_off_edges = np.diff(np.concatenate([pmt_off_indices,[0]]))
+    pmt_off_indices[pmt_off_edges!=0] = 1 #dilate 1
+    pmt_off_edges = np.diff(np.concatenate([[0],pmt_off_indices,[0]]))
+    starts = np.where(pmt_off_edges==1)[0]
+    ends = np.where(pmt_off_edges==-1)[0]
+    lengths = ends-starts
+    for idx in np.where(lengths<=10)[0]:
+        pmt_off_indices[starts[idx]:ends[idx]]=0
+    F[:,pmt_off_indices] = np.nan
+    return F
+
 def sessionwise_to_trialwise_simple(F, 
                                     trial_start,
                                     max_frames=None,
@@ -249,7 +281,10 @@ def sessionwise_to_trialwise(F, all_si_filenames, closed_loop_filenames, frame_n
                     start_frame = 0
                 else:
                     missing_frames_at_beginning = 0
-                F_trialwise_closed_loop[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+                try:
+                    F_trialwise_closed_loop[missing_frames_at_beginning:missing_frames_at_beginning+end_frame-start_frame, :, counter] = F[:, start_frame:end_frame].T
+                except:
+                    print('could not add a reward trial..')
                 needed_list.append(counter)
                 counter += 1
             F_trialwise_closed_loop = F_trialwise_closed_loop[:,:,needed_list]
@@ -326,15 +361,17 @@ def generate_canned_sessions(suite2p_path,
         suite2p_data = os.path.join(suite2p_path, mouse)
         raw_suite2p = os.path.join(raw_data_path, mouse)
         behavior_data_path = os.path.join(behavior_data_path)
-        mouse_save_path = os.path.join(save_path, mouse)
+        mouse_save_path = os.path.join(save_path)
 
         os.makedirs(mouse_save_path, exist_ok=True)
 
         if fov_list is None:
-            fov_list = [k for k in os.listdir(suite2p_data) if k[-2:].isdigit()] # For BCI_29 there exists folders other than FOV_0x
-            print(fov_list)
+            fov_list_ = [k for k in os.listdir(suite2p_data) if k[-2:].isdigit()] # For BCI_29 there exists folders other than FOV_0x
+            print(fov_list_)
+        else:
+            fov_list_ = fov_list
 
-        for fov in fov_list:
+        for fov in fov_list_:
             fov_path = os.path.join(suite2p_data, fov)
             try:
                 mean_image = np.load(os.path.join(fov_path, "mean_image.npy")) #TODO the mean image should come from the session and not from the FOV
@@ -347,12 +384,12 @@ def generate_canned_sessions(suite2p_path,
             if session_list is None:
                 session_list_ = next(os.walk(fov_path))[1]
             else:
-                session_list = session_list_
+                session_list_ = session_list
 
             for session_date in session_list_:
                 if session_date == "Z-stacks":
                     continue
-                session_save_path = os.path.join(mouse_save_path, f"{mouse}-{session_date}-{fov}.npy")
+                session_save_path = os.path.join(mouse_save_path, f"{mouse}-{session_date}.npy")
                 if os.path.exists(session_save_path) and overwrite==False:
                     print(f"Session already exists at {session_save_path}, and overwrite=False")
                     continue
@@ -386,18 +423,22 @@ def generate_canned_session(suite2p_path,
     ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+    meanimages = np.load(os.path.join(fov_path,'session_mean_images.npy'),allow_pickle = True).tolist()
+    meanImg =  meanimages[session_date]['meanImg']
     fs = ops['fs']
 
     data = dict()
     # basic metadata
     data['dt_si'] = 1/fs
-    data['trace_corr'] = np.corrcoef(F.T, rowvar=False)
+    
     data['iscell'] = iscell
     # metadata
     data['dat_file'] = session_path
     data['session'] = session_date
     data['mouse'] = mouse
+    data['mean_image'] = meanImg
     data['fov'] = fov
+    data['version'] = '1.0'
 
 
 
@@ -450,16 +491,22 @@ def generate_canned_session(suite2p_path,
     dist_from_cn = np.asarray(dist_from_cn)[np.asarray(needed_cn_indices)]
     scanimage_filenames = np.asarray(_scanimage_filenames)[np.asarray(needed_cn_indices)]
     uniquecns = np.unique(np.asarray(cn_idx)[(cn_idx==None) ==False])
-    print('{} conditioned neurons found'.format(len(uniquecns)))
+    if len(uniquecns)>1:
+        median_index = []
+        for ucn in uniquecns:
+            median_index.append(np.nanmedian(np.where(np.asarray(cn_idx)==ucn)[0]))
+        uniquecns = uniquecns[np.argsort(median_index)] # now they are ordered
+    print('{} conditioned neuron(s) found: {}'.format(len(uniquecns),uniquecns))
 
 
     # get the spontaneous
     end_framenum_spontaneous = np.sum(np.asarray(all_si_frame_nums)[:np.where(np.asarray(all_si_filenames) ==closed_loop_scanimage_filenames[0])[0][0]])
-    data['spont'] = F[:,:end_framenum_spontaneous] 
-
-
-    # get conditioning & preconditioningpre-conditioning
-    for minuniquecnnum,cnidx,suffix,parent_dict_name in zip([1,0],[0,-1],['',''],['preconditioning','']):
+    data['spont'] = {'Ftrace': F[:,:end_framenum_spontaneous],
+                    'trace_corr' : np.corrcoef(F[:,:end_framenum_spontaneous].T, rowvar=False)}
+    
+    # get conditioning & preconditioning
+    #for minuniquecnnum,cnidx,suffix,parent_dict_name in zip([1,0],[0,-1],['',''],['BCI_precond','BCI']):
+    for minuniquecnnum,cnidx,suffix,parent_dict_name in zip([0,1,2,3],[0,1,2,3],['','','',''],['BCI_1','BCI_2','BCI_3','BCI_4']):
         if len(uniquecns)>minuniquecnnum:
             data_ = {}
             cn_prev = uniquecns[cnidx]  
@@ -505,6 +552,7 @@ def generate_canned_session(suite2p_path,
             #print(ops_temp)
             data_['F'+suffix], data_['Fraw'+suffix],data_['df_closedloop'+suffix],data_['centroidX'+suffix],data_['centroidY'+suffix] = create_BCI_F(F[:,framenums],ops_temp,stat);  
             data_['Ftrace'+suffix] = F[:,framenums]
+            data_['trace_corr'+suffix] = np.corrcoef(F[:,framenums].T, rowvar=False)
             data_['dist'+suffix] = dist_from_cn[np.where(all_si_filenames == closed_loop_filenames[0])[0][0]]
             data_['conditioned_neuron_coordinates'+suffix] = [stat[cn_prev]['xpix'],stat[cn_prev]['ypix']]
             data_['conditioned_neuron'+suffix] = cn_prev
@@ -523,9 +571,22 @@ def generate_canned_session(suite2p_path,
                     data[parent_dict_name][key] = data_[key]
     # get photostim
     if 'photostim' in os.listdir(session_path):
+        print('photostim exported')
         photostim_dict = np.load(os.path.join(session_path,'photostim','photostim_dict.npy'),allow_pickle = True).tolist() 
-        for key in photostim_dict.keys():
-            data[key] = photostim_dict[key]
+        data['photostim']=photostim_dict
+#         photostim_groups = np.load(os.path.join(session_path,'photostim','photostim_groups.npy'),allow_pickle = True).tolist()
+#         pg = []
+#         for photostim_group in photostim_groups['groups']:
+#             if type(pg) == list:
+#                 photostim_group.pop('cell_response_distribution')
+#                 photostim_group.pop('photostimmed_cells')
+#                 pg = {}
+#                 for key in photostim_group.keys():
+#                     pg[key] = []
+#             for key in pg.keys():
+#                 pg[key].append(photostim_group[key])
+            
+#         data['photostim']['stim_group_metadata'] = pg
     
     return data
 
@@ -613,7 +674,7 @@ def suite2p_to_npy(suite2p_path,
             if session_list is None:
                 session_list_ = next(os.walk(fov_path))[1]
             else:
-                session_list = session_list_
+                session_list_ = session_list
 
             for session_date in session_list_:
                 if session_date == "Z-stacks":
