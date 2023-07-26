@@ -186,8 +186,8 @@ def find_conditioned_neuron_idx(session_bpod_file,
         #%
 
         coordinates_now = coordinates_now[::-1] # go to yx
-        coordinates_now[coordinates_now>1] = 1
-        coordinates_now[coordinates_now<0] = 0
+        coordinates_now[coordinates_now>.99] = .99
+        coordinates_now[coordinates_now<.01] = .01
         coordinates_now[0] = coordinates_now[0]*Ly
         coordinates_now[1] = coordinates_now[1]*Lx
 
