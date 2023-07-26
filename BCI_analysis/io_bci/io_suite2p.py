@@ -486,8 +486,11 @@ def generate_canned_session(suite2p_path,
             needed_cn_indices.append(True)
         else:
             needed_cn_indices.append(False)
-
-    cn_idx = np.asarray(cn_idx)[np.asarray(needed_cn_indices)]
+    try:
+        cn_idx = np.asarray(cn_idx)[np.asarray(needed_cn_indices)]
+    except:
+        print('cn is not found: {}'.format(cn_idx))
+        cn_idx = np.asarray([None]*sum(needed_cn_indices))
     dist_from_cn = np.asarray(dist_from_cn)[np.asarray(needed_cn_indices)]
     scanimage_filenames = np.asarray(_scanimage_filenames)[np.asarray(needed_cn_indices)]
     uniquecns = np.unique(np.asarray(cn_idx)[(cn_idx==None) ==False])
