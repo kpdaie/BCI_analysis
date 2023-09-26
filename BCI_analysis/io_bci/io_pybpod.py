@@ -269,8 +269,12 @@ def pybpod_dataframe_to_dict(data):
 
         if len(go_cue_time) == 0 and len(go_cue_omission_time) == 0:
             continue # no go cue no trial
+        
         if len(go_cue_time) == 0:
             go_cue_time = [np.nan]
+            trial_number = df_trial.loc[(df_trial['MSG'] == 'GoCueOmission') & (df_trial['TYPE'] == 'TRANSITION'),'Trial_number'].values[0]
+        else:
+            trial_number = df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),'Trial_number'].values[0]
             
         
         
@@ -297,7 +301,7 @@ def pybpod_dataframe_to_dict(data):
         except:
             ITI_start_times = np.nan
         zaber_motor_movement_times = df_trial.loc[(Zaber_moves_channel[0] == data['+INFO']) | (Zaber_moves_channel[1] == data['+INFO']),'BPOD-INITIAL-TIME'].values
-        trial_number = df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),'Trial_number'].values[0]
+        
         
         data_dict['trial_num'].append(trial_number)
         data_dict['go_cue_times'].append(go_cue_time)
@@ -318,7 +322,10 @@ def pybpod_dataframe_to_dict(data):
         data_dict['photostim_times'].append(photostim_times)
         for key_now in data.keys():
             if 'var:'in key_now:
-                data_dict[key_now.replace(':','_')].append(df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),key_now].values[0])
+                try:
+                    data_dict[key_now.replace(':','_')].append(df_trial.loc[(df_trial['MSG'] == 'GoCue') & (df_trial['TYPE'] == 'TRANSITION'),key_now].values[0])
+                except:
+                    data_dict[key_now.replace(':','_')].append(df_trial.loc[(df_trial['MSG'] == 'GoCueOmission') & (df_trial['TYPE'] == 'TRANSITION'),key_now].values[0])
             
         
             

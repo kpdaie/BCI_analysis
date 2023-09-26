@@ -288,6 +288,7 @@ def export_pybpod_files_core(bpod_session_dict,
         behavior_dict['scanimage_first_frame_offset'] = np.asarray(scanimage_frame_time_offset)
         behavior_dict['scanimage_tiff_headers'] = np.asarray(scanimage_metadata_list)
     else:
+        time_offset = np.nan
         print('no movie-behavior correspondance found ')
         behavior_dict['scanimage_file_names'] = 'no movie files found'
 
@@ -471,60 +472,68 @@ def export_pybpod_files(behavior_export_basedir,
         calcium_imaging_raw_setup_dir = os.path.join(calcium_imaging_raw_basedir,setup)
         subjects = np.sort(os.listdir(calcium_imaging_raw_setup_dir))
         for subject in subjects:
+            if not ('bci' in subject.lower() or 'pkj' in subject.lower()):
+                continue
+            calcium_imaging_raw_subject_dir = os.path.join(calcium_imaging_raw_setup_dir,subject)
             if 'bci' in subject.lower():
-                calcium_imaging_raw_subject_dir = os.path.join(calcium_imaging_raw_setup_dir,subject)
-                subject_wr_name = 'BCI{}'.format(subject[subject.find('_')+1:])
-                sessions = np.sort(os.listdir(calcium_imaging_raw_subject_dir))
-                for session in sessions:
+                if subject.startswith('KH_'):
+                    subject_wr_name = 'BCI{}'.format(subject[subject.find('_',3)+1:])
+                else:
+                    subject_wr_name = 'BCI{}'.format(subject[subject.find('_')+1:])
+            elif 'pkj' in subject.lower():
+                subject_wr_name = 'PKJ{}'.format(subject[subject.find('_')+1:])
+            sessions = np.sort(os.listdir(calcium_imaging_raw_subject_dir))
+            for session in sessions:
+                try:
+                    session_date = datetime.datetime.strptime(session,'%m%d%y')
+                except:
                     try:
-                        session_date = datetime.datetime.strptime(session,'%m%d%y')
+                        session_date = datetime.datetime.strptime(session,'%Y-%m-%d')
                     except:
                         try:
-                            session_date = datetime.datetime.strptime(session,'%Y-%m-%d')
+                            session_date = datetime.datetime.strptime(session[:6],'%m%d%y')
                         except:
-                            try:
-                                session_date = datetime.datetime.strptime(session[:6],'%m%d%y')
-                            except:
-                                print('cannot understand date for session dir: {}'.format(session))
-                                continue
-                    
-                    calcium_imaging_raw_session_dir = os.path.join(calcium_imaging_raw_subject_dir,session)
-                    bpod_export_dir = os.path.join(behavior_export_basedir,setup,subject)
-                    Path(bpod_export_dir).mkdir(parents=True, exist_ok=True)
-                    bpod_export_file = '{}-bpod_zaber.npy'.format(session)
-                    if not overwrite and os.path.exists(os.path.join(bpod_export_dir,bpod_export_file)):
-                        print('session already exported: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
-                        continue
-                    
-                    bpod_session_dict = find_pybpod_sessions([subject_wr_name,subject,subject_wr_name.lower(),subject.lower()],session_date.strftime('%Y%m%d'),projects)
-                   
-                    
-                    
-                    print('exporting behavior from {}/{}'.format(subject,session))
-                    try:
-                        behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
-                    except:
-                        print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
-                    
-                    if type(behavior_dict) != dict:
-                        print('skipping this one')
-                        continue
-                    
-                    bpod_export_dir = os.path.join(behavior_export_basedir,setup,subject)
-                    Path(bpod_export_dir).mkdir(parents=True, exist_ok=True)
-                    bpod_export_file = '{}-bpod_zaber.npy'.format(session)
-                    np.save(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict)
-                    bpod_export_file = '{}-bpod_zaber.mat'.format(session)
-                    behavior_dict_matlab = behavior_dict.copy()
-                    behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
-                    behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
-                    behavior_dict_matlab.pop('scanimage_tiff_headers')
-                    try:
-                        behavior_dict_matlab['residual_tiff_files'].pop('scanimage_tiff_headers')
-                    except:
-                        pass
-                    savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
-                    print('{}/{} saved'.format(subject,session))
+                            print('cannot understand date for session dir: {}'.format(session))
+                            continue
+        
+                
+                calcium_imaging_raw_session_dir = os.path.join(calcium_imaging_raw_subject_dir,session)
+                bpod_export_dir = os.path.join(behavior_export_basedir,setup,subject)
+                Path(bpod_export_dir).mkdir(parents=True, exist_ok=True)
+                bpod_export_file = '{}-bpod_zaber.npy'.format(session)
+                if not overwrite and os.path.exists(os.path.join(bpod_export_dir,bpod_export_file)):
+                    print('session already exported: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
+                    continue
+                
+                bpod_session_dict = find_pybpod_sessions([subject_wr_name,subject,subject_wr_name.lower(),subject.lower()],session_date.strftime('%Y%m%d'),projects)
+               
+                
+                
+                print('exporting behavior from {}/{}'.format(subject,session))
+                try:
+                    behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
+                except:
+                    print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
+                    behavior_dict = None
+                if type(behavior_dict) != dict:
+                    print('skipping this one')
+                    continue
+                
+                bpod_export_dir = os.path.join(behavior_export_basedir,setup,subject)
+                Path(bpod_export_dir).mkdir(parents=True, exist_ok=True)
+                bpod_export_file = '{}-bpod_zaber.npy'.format(session)
+                np.save(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict)
+                bpod_export_file = '{}-bpod_zaber.mat'.format(session)
+                behavior_dict_matlab = behavior_dict.copy()
+                behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
+                behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
+                behavior_dict_matlab.pop('scanimage_tiff_headers')
+                try:
+                    behavior_dict_matlab['residual_tiff_files'].pop('scanimage_tiff_headers')
+                except:
+                    pass
+                savemat(os.path.join(bpod_export_dir,bpod_export_file),behavior_dict_matlab)
+                print('{}/{} saved'.format(subject,session))
 
 # =============================================================================
 # #%%
