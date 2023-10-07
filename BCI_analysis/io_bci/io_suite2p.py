@@ -5,6 +5,12 @@ import json
 from BCI_analysis.pipeline.pipeline_imaging import find_conditioned_neuron_idx
 from tqdm import tqdm
 
+
+def get_canned_file_version():
+    canned_file_version = '1.01'
+    return canned_file_version
+
+
 def nan_helper(y):
     """Helper to handle indices and logical indices of NaNs.
 
@@ -391,8 +397,12 @@ def generate_canned_sessions(suite2p_path,
                     continue
                 session_save_path = os.path.join(mouse_save_path, f"{mouse}-{session_date}.npy")
                 if os.path.exists(session_save_path) and overwrite==False:
-                    print(f"Session already exists at {session_save_path}, and overwrite=False")
-                    continue
+                    temp_data = np.load(os.path.join(session_save_path),allow_pickle = True).tolist()
+                    if temp_data['version'] == BCI_analysis.io_suite2p.get_canned_file_version():
+                        print(f"Session already exists at {session_save_path}, and overwrite=False")
+                        continue
+                    else:
+                        print(f"Updating file version from {temp_data['version']} to {BCI_analysis.io_suite2p.get_canned_file_version()}"))
                 print(f"FOV: {fov}, Session Date: {session_date}")
                 try:
                     dict_all = generate_canned_session(suite2p_path,
@@ -425,6 +435,7 @@ def generate_canned_session(suite2p_path,
     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
     meanimages = np.load(os.path.join(fov_path,'session_mean_images.npy'),allow_pickle = True).tolist()
     meanImg =  meanimages[session_date]['meanImg']
+    photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
     fs = ops['fs']
 
     data = dict()
@@ -438,7 +449,8 @@ def generate_canned_session(suite2p_path,
     data['mouse'] = mouse
     data['mean_image'] = meanImg
     data['fov'] = fov
-    data['version'] = '1.0'
+    data['dprime_1dFperF'] = photon_counts_dict['dprime_1dFF']
+    data['version'] = get_canned_file_version()
 
 
 
@@ -699,8 +711,10 @@ def suite2p_to_npy(suite2p_path,
                     
                     F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
                     F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
-
-                    photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
+                    try:
+                        photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
+                    except:
+                        photon_counts_dict = None
 
 					#f0_scalar = np.mean(np.load(os.path.join(session_path,'F0.npy')),1)                    
                     f0_scalar = np.percentile(F0[:,:int(F0.shape[1]/2)],10,axis = 1)
@@ -720,7 +734,7 @@ def suite2p_to_npy(suite2p_path,
                     cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
                                                                                                  os.path.join(session_path, "ops.npy"), 
                                                                                                  os.path.join(fov_path, "stat.npy"), 
-                                                                                                 plot=True)
+                                                                                                 plot=False)
                     
                     try:
                         clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
@@ -813,7 +827,10 @@ def suite2p_to_npy(suite2p_path,
                                 needed_cn_indices.append(True)
                             else:
                                 needed_cn_indices.append(False)
-                        cn_idx = np.asarray(cn_idx)[np.asarray(needed_cn_indices)]
+                        try:
+                            cn_idx = np.asarray(cn_idx)[np.asarray(needed_cn_indices)]
+                        except:
+                            cn_idx = np.asarray([None]*sum(needed_cn_indices))
                         
                     dict_all = {'F_sessionwise': F,
                                 'F_trialwise_all': F_trialwise_all,
