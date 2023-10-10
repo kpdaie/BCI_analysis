@@ -402,7 +402,7 @@ def generate_canned_sessions(suite2p_path,
                         print(f"Session already exists at {session_save_path}, and overwrite=False")
                         continue
                     else:
-                        print(f"Updating file version from {temp_data['version']} to {BCI_analysis.io_suite2p.get_canned_file_version()}"))
+                        print(f"Updating file version from {temp_data['version']} to {BCI_analysis.io_suite2p.get_canned_file_version()}")
                 print(f"FOV: {fov}, Session Date: {session_date}")
                 try:
                     dict_all = generate_canned_session(suite2p_path,
