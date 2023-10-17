@@ -8,9 +8,9 @@ setup(
                       'pandas',
                       'mat73',
                       'scanimage_tiff_reader',
-                      'pybpod']
+                      'pybpod',
+                      'scikit-learn',
+                      'matplotlib']
                       #'umap-learn',# for axon imaging, temporary
-                      #'scikit-learn',
-                      #'matplotlib',
-                      #'rastermap']
+                      #'rastermap'] # problems with numpy
     )
