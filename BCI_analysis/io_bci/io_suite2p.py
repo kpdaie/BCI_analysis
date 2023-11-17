@@ -684,7 +684,10 @@ def suite2p_to_npy(suite2p_path,
                 print(f"Files Not present for this {fov}, skipping")
                 continue
             max_image = np.load(os.path.join(fov_path, "max_image.npy"))#TODO the max image should come from the session and not from the FOV
-            stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
+            try:
+                stat = np.load(os.path.join(session_path, "stat.npy"), allow_pickle=True).tolist()
+            except:
+                stat = np.load(os.path.join(fov_path, "stat.npy"), allow_pickle=True).tolist()
 
             if session_list is None:
                 session_list_ = next(os.walk(fov_path))[1]
