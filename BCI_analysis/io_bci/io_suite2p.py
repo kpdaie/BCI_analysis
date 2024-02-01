@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 
 def get_canned_file_version():
-    canned_file_version = '1.01'
+    canned_file_version = '1.02'
     return canned_file_version
 
 
@@ -398,22 +398,23 @@ def generate_canned_sessions(suite2p_path,
                 session_save_path = os.path.join(mouse_save_path, f"{mouse}-{session_date}.npy")
                 if os.path.exists(session_save_path) and overwrite==False:
                     temp_data = np.load(os.path.join(session_save_path),allow_pickle = True).tolist()
-                    if temp_data['version'] == BCI_analysis.io_suite2p.get_canned_file_version():
+                    if temp_data['version'] == get_canned_file_version():
                         print(f"Session already exists at {session_save_path}, and overwrite=False")
                         continue
                     else:
-                        print(f"Updating file version from {temp_data['version']} to {BCI_analysis.io_suite2p.get_canned_file_version()}")
+                        print(f"Updating file version from {temp_data['version']} to {get_canned_file_version()}")
                 print(f"FOV: {fov}, Session Date: {session_date}")
-                try:
-                    dict_all = generate_canned_session(suite2p_path,
-                                                       mouse,
-                                                       fov,
-                                                       session_date,
-                                                       behavior_data_path)
-                    if type(dict_all) == dict:
-                        np.save(session_save_path, dict_all)
-                except:
-                    print('error saving {}'.format(os.path.join(fov_path, session_date)))
+                # try:
+                    # function here that selects best ROIs
+                dict_all = generate_canned_session(suite2p_path,
+                                                   mouse,
+                                                   fov,
+                                                   session_date,
+                                                   behavior_data_path)
+                if type(dict_all) == dict:
+                    np.save(session_save_path, dict_all)
+#                 except:
+#                     print('error saving {}'.format(os.path.join(fov_path, session_date)))
                     
     
     
