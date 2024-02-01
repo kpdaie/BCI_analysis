@@ -353,8 +353,11 @@ def get_aligned_data(suite2p_path,
         trial_id = dlc_file_name[2][:-5]
 
         trial_json = os.path.join(dlc_folder, trial_id+".json")
-        with open(trial_json) as f:
-            trial_metadata = json.load(f) 
+        try:
+            with open(trial_json) as f:
+                trial_metadata = json.load(f) 
+        except:
+            print(f'could not open trial metadata file for trial {i}, skipping')
         F_trial = F_trialwise[i].T
         if only_up_to_reward:
             rew_trial = reward_trialwise[i].flatten()
