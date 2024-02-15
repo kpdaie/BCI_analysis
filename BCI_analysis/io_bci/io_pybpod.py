@@ -206,8 +206,11 @@ def pybpod_dataframe_to_dict(data):
         Dictionary with trial based information..
     """
     Zaber_moves_channel = ['Wire1High','Wire1Low'] # TODO this is hard coded, should be in the variables
+    movement_punishment_start_event = 'Port6Out' # TODO this is hard coded, should be in the variables
+    movement_punishment_end_event = 'Port6In' # TODO this is hard coded, should be in the variables
     trial_start_idxs = data.loc[data['TYPE'] == 'TRIAL'].index.to_numpy()
     trial_end_idxs = data.loc[data['TYPE'] == 'END-TRIAL'].index.to_numpy()
+    slap2_trigger_transition = 'Trigger-Scanimage'#hard coded again
     
     #threshold_passed_idx =
     if len(trial_start_idxs) > len(trial_end_idxs):
@@ -231,7 +234,11 @@ def pybpod_dataframe_to_dict(data):
                  'threshold_crossing_times':list(),    
                  'behavior_movie_name_list':list(),
                  'scanimage_message_list':list(),
-                 'photostim_times' : list()
+                 'photostim_times' : list(),
+                 'movement_punishment_times_start':list(),
+                 'movement_punishment_times_end':list(),
+                 'SLAP2_trigger_times': list(),
+                 'Scanimage_trigger_times':list(),
                  }
 
     for key_now in data.keys():
@@ -301,8 +308,21 @@ def pybpod_dataframe_to_dict(data):
         except:
             ITI_start_times = np.nan
         zaber_motor_movement_times = df_trial.loc[(Zaber_moves_channel[0] == data['+INFO']) | (Zaber_moves_channel[1] == data['+INFO']),'BPOD-INITIAL-TIME'].values
-        
-        
+        try:
+            movement_punishment_start_times = df_trial.loc[movement_punishment_start_event == data['+INFO'],'BPOD-INITIAL-TIME'].values
+            movement_punishment_end_times = df_trial.loc[movement_punishment_end_event == data['+INFO'],'BPOD-INITIAL-TIME'].values
+        except:
+            movement_punishment_start_times = []
+            movement_punishment_end_times = []
+        try:
+            slap2_trigger_time = df_past_trial.loc[(df_past_trial['MSG'] == slap2_trigger_transition) & (df_past_trial['TYPE'] == 'STATE'),'BPOD-INITIAL-TIME'].values#.index.to_numpy()[0]
+        except:
+            slap2_trigger_time = np.nan
+        try:
+            scaimage_trigger_time = df_trial.loc[(df_trial['MSG'] == 'Response') & (df_trial['TYPE'] == 'TRANSITION'),'BPOD-INITIAL-TIME'].values#[0]#.index.to_numpy()[0]
+        except:
+            scaimage_trigger_time = np.nan
+
         data_dict['trial_num'].append(trial_number)
         data_dict['go_cue_times'].append(go_cue_time)
         data_dict['trial_start_times'].append(trial_start_time)
@@ -320,6 +340,12 @@ def pybpod_dataframe_to_dict(data):
         data_dict['behavior_movie_name_list'].append(behavior_movie_names)
         data_dict['scanimage_message_list'].append(scanimage_message)
         data_dict['photostim_times'].append(photostim_times)
+        data_dict['movement_punishment_times_start'].append(movement_punishment_start_times)
+        data_dict['movement_punishment_times_end'].append(movement_punishment_end_times)
+        data_dict['SLAP2_trigger_times'].append(slap2_trigger_time)
+        data_dict['Scanimage_trigger_times'].append(scaimage_trigger_time)
+
+
         for key_now in data.keys():
             if 'var:'in key_now:
                 try:
@@ -390,6 +416,8 @@ def add_zaber_info_to_pybpod_dict(behavior_dict,
                        'trigger_step_size':list(),
                        'max_speed':list(),
                        'microstep_size':list()}
+    arduino_vars_dict ={'movement_off_time':list(),
+                        'movement_threshold':list()}
     for trial_start_time in behavior_dict['trial_start_times']:
         zaber_file_idx = np.argmax(zabertimes<trial_start_time)
         if zaber_file_idx  != zaber_file_idx_prev:
@@ -398,13 +426,22 @@ def add_zaber_info_to_pybpod_dict(behavior_dict,
             zaber_file_idx_prev = zaber_file_idx
         for zaber_key in zaber_vars_dict.keys():
             zaber_vars_dict[zaber_key].append(zaber_dict['zaber'][zaber_key])
+        for arduino_key in arduino_vars_dict.keys():
+            if arduino_key in zaber_dict['arduino'].keys():
+                arduino_vars_dict[arduino_key].append(zaber_dict['arduino'][arduino_key])
+            else:
+                arduino_vars_dict[arduino_key].append(np.nan)
     for zaber_key in zaber_vars_dict.keys():
         zaber_vars_dict[zaber_key] = np.asarray(zaber_vars_dict[zaber_key])
+        
+    for arduino_key in arduino_vars_dict.keys():
+        arduino_vars_dict[arduino_key] = np.asarray(arduino_vars_dict[arduino_key])
         
     zaber_step_times = list()
     for v,a,s in zip(zaber_vars_dict['speed'],zaber_vars_dict['acceleration'],zaber_vars_dict['trigger_step_size']):
         zaber_step_times.append(calculate_step_time(s/1000,v,a))
     zaber_vars_dict['trigger_step_time'] =np.asarray(zaber_step_times)
+    zaber_vars_dict = {**zaber_vars_dict, **arduino_vars_dict}
     return zaber_vars_dict  
 
 
