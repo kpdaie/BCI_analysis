@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 from statistics import mode
 import numpy as np
-
+from .. import io_bci as io
 import datetime
 
 
@@ -52,6 +52,7 @@ def find_pybpod_sessions(subject_names_list,
     outdict = {'sessions':np.asarray(sessions_now)[order],
                'session_start_times':np.asarray(session_start_times_now)[order],
                'experiment_names':np.asarray(experimentnames_now)[order]}
+    
     return outdict
 
 
@@ -80,6 +81,7 @@ def export_pybpod_files_core(bpod_session_dict,
     behavior_dict_list = list()
     sessionfile_start_times = list()
     for sessionfile in bpod_session_dict['sessions']:
+        
         csvfile = sessionfile.filepath
         csv_data = io.io_pybpod.pybpod_csv_to_dataframe(csvfile)
         behavior_dict = io.io_pybpod.pybpod_dataframe_to_dict(csv_data)
@@ -115,8 +117,16 @@ def export_pybpod_files_core(bpod_session_dict,
     for key in behavior_dict_list[0].keys():
         keylist = list()
         for behavior_dict_now in behavior_dict_list:
-            for element in behavior_dict_now[key]:
-                keylist.append(element)
+            try:
+                for element in behavior_dict_now[key]:
+                    keylist.append(element)
+                prev_element_num = len(behavior_dict_now[key])
+            except:
+                print('{} not found in behavior dict'.format(key))
+                for i____ in np.arange(prev_element_num):
+                    keylist.append(np.nan)
+                    
+            
         behavior_dict[key] = np.asarray(keylist)
         
     
@@ -469,6 +479,10 @@ def export_pybpod_files(behavior_export_basedir,
         projects[-1].load(projectdir)
     setups = os.listdir(calcium_imaging_raw_basedir)
     for setup in setups[::-1]:
+# =============================================================================
+#         if 'SLAP' not in setup:
+#             continue
+# =============================================================================
         calcium_imaging_raw_setup_dir = os.path.join(calcium_imaging_raw_basedir,setup)
         subjects = np.sort(os.listdir(calcium_imaging_raw_setup_dir))
         for subject in subjects:
@@ -478,6 +492,8 @@ def export_pybpod_files(behavior_export_basedir,
             if 'bci' in subject.lower():
                 if subject.startswith('KH_'):
                     subject_wr_name = 'BCI{}'.format(subject[subject.find('_',3)+1:])
+                elif subject.startswith('SBCI'):
+                    subject_wr_name = 'SBCI{}'.format(subject[subject.find('_')+1:])
                 else:
                     subject_wr_name = 'BCI{}'.format(subject[subject.find('_')+1:])
             elif 'pkj' in subject.lower():
@@ -510,9 +526,13 @@ def export_pybpod_files(behavior_export_basedir,
                 
                 
                 print('exporting behavior from {}/{}'.format(subject,session))
+                
+                    
                 try:
                     behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
                 except:
+                    if subject =='BCI_68':
+                        behavior_dict = export_pybpod_files_core(bpod_session_dict,calcium_imaging_raw_session_dir,zaber_root_folder) 
                     print('COULD NOT EXPORT SESSION: {}'.format(os.path.join(bpod_export_dir,bpod_export_file)))
                     behavior_dict = None
                 if type(behavior_dict) != dict:
@@ -527,7 +547,10 @@ def export_pybpod_files(behavior_export_basedir,
                 behavior_dict_matlab = behavior_dict.copy()
                 behavior_dict_matlab['trial_start_times'] = np.asarray(behavior_dict['trial_start_times'],str)
                 behavior_dict_matlab['trial_end_times'] = np.asarray(behavior_dict['trial_end_times'],str)
-                behavior_dict_matlab.pop('scanimage_tiff_headers')
+                try:
+                    behavior_dict_matlab.pop('scanimage_tiff_headers')
+                except:
+                    pass
                 try:
                     behavior_dict_matlab['residual_tiff_files'].pop('scanimage_tiff_headers')
                 except:
