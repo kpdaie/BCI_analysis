@@ -161,7 +161,9 @@ def get_aligned_data(suite2p_path,
                      face_rhythm_base_dir = None,
                      use_face_rhythm=False,
                      match_with_face_rhythm = False,
-                     only_up_to_reward = False):
+                     only_up_to_reward = False,
+                     only_up_to_max_2p_frame_number = np.inf,
+                     add_part_distances = True): ### DO THIS!!!!
     """
     This script returns aligned F (raw flouroscence trace) and DLC data. 
     a. If there are multiple movie files a trial they are thrown out. 
@@ -329,6 +331,7 @@ def get_aligned_data(suite2p_path,
     dlc_data = None
     trials_taken = []
     trial_start_indices = []
+    csv_files_used = []
     for i, bm_name in tqdm(enumerate(behavior_movie_names)):
 
         if type(bm_name) == str:
@@ -364,6 +367,9 @@ def get_aligned_data(suite2p_path,
             if any(rew_trial>0):
                # print('only used {} frames out of {} due to reward'.format(np.argmax(rew_trial),F_trial.shape[1]))
                 F_trial = F_trial[:,:np.argmax(rew_trial)]
+        if F_trial.shape[1]>only_up_to_max_2p_frame_number:
+            F_trial = F_trial[:,:only_up_to_max_2p_frame_number]
+            
                 
             
 
@@ -381,6 +387,20 @@ def get_aligned_data(suite2p_path,
 
 
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
+        # remove low-confidence frames
+        bodyparts = []
+        for k_ in dlc_trial.keys():
+            bodyparts.append(k_[0])
+        bodyparts = np.unique(bodyparts)
+        for bodypart in bodyparts:
+            dlc_trial[(bodypart, 'x')][dlc_trial[(bodypart, 'likelihood')]<0.999] = np.nan
+            dlc_trial[(bodypart, 'y')][dlc_trial[(bodypart, 'likelihood')]<0.999] = np.nan
+
+        
+        # add distances
+        if add_part_distances:
+            
+        
         if add_motion_energy:
             motion_energy_folder = os.path.join(motion_energy_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
             motion_energy_fname = os.path.join(motion_energy_folder, trial_id+".npy")
@@ -476,6 +496,7 @@ def get_aligned_data(suite2p_path,
         F_aligned.append(F_trial)
         #print(F_trial.shape)
         trials_taken.append(i)
+        csv_files_used.append(os.path.join(dlc_folder, trial_csv))
         try:
             lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
             rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
@@ -510,7 +531,7 @@ def get_aligned_data(suite2p_path,
             "trial_times_aligned": tt,
             "cn": cn,
             "trials_taken": trials_taken,
-            "trial_start_indices":trial_start_indices
-            } 
+            "trial_start_indices":trial_start_indices,
+            "csv_files_used":csv_files_used} 
     np.save(dict_save_path, dict_return)
     return dict_return
