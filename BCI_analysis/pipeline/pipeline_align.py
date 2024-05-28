@@ -393,13 +393,19 @@ def get_aligned_data(suite2p_path,
             bodyparts.append(k_[0])
         bodyparts = np.unique(bodyparts)
         for bodypart in bodyparts:
-            dlc_trial[(bodypart, 'x')][dlc_trial[(bodypart, 'likelihood')]<0.999] = np.nan
-            dlc_trial[(bodypart, 'y')][dlc_trial[(bodypart, 'likelihood')]<0.999] = np.nan
-
-        
+            dlc_trial[(bodypart, 'x')][dlc_trial[(bodypart, 'likelihood')]<0.99] = np.nan
+            dlc_trial[(bodypart, 'y')][dlc_trial[(bodypart, 'likelihood')]<0.99] = np.nan
         # add distances
+        
         if add_part_distances:
-            
+            for bodypart_i_0 in np.arange(len(bodyparts)):
+                bodypart_0 = bodyparts[bodypart_i_0]
+                for bodypart_i_1 in np.arange(bodypart_i_0+1,len(bodyparts)):
+                    bodypart_1 = bodyparts[bodypart_i_1]
+                    x_dist = dlc_trial[(bodypart_0,'x')] - dlc_trial[(bodypart_1,'x')]
+                    y_dist = dlc_trial[(bodypart_0,'y')] - dlc_trial[(bodypart_1,'y')]
+                    bodypart_distance = np.sqrt(x_dist**2 + y_dist**2)
+                    dlc_trial[('{}_to_{}'.format(bodypart_0,bodypart_1),'x')] = bodypart_distance
         
         if add_motion_energy:
             motion_energy_folder = os.path.join(motion_energy_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
