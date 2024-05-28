@@ -712,9 +712,12 @@ def suite2p_to_npy(suite2p_path,
                     ops =  np.load(os.path.join(session_path, "ops.npy") ,allow_pickle = True).tolist()
                     fs = ops['fs']
                     tsta = np.arange(-frames_prev_trial, frames_this_trial, 1).astype(float)/fs
-                    
-                    F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
-                    F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+                    try:
+                        F = np.load(os.path.join(session_path, "F.npy"), allow_pickle=True)
+                        F0 = np.load(os.path.join(session_path, "F0.npy"), allow_pickle=True)
+                    except:
+                        print('no F and F0 found, cannnot load file {}'.format(session_path))
+                        continue 
                     try:
                         photon_counts_dict=np.load(os.path.join(session_path,'photon_counts.npy'),allow_pickle=True).tolist()
                     except:
@@ -735,11 +738,15 @@ def suite2p_to_npy(suite2p_path,
                     
                     all_si_filenames = filelist['file_name_list']
                     behavior_fname = os.path.join(behavior_data_path, f"{session_date}-bpod_zaber.npy")
-                    cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
-                                                                                                 os.path.join(session_path, "ops.npy"), 
-                                                                                                 os.path.join(fov_path, "stat.npy"), 
-                                                                                                 plot=False)
-                    
+                    try:
+                        cn_idx,_closed_loop_trial,_scanimage_filenames = find_conditioned_neuron_idx(behavior_fname, 
+                                                                                                     os.path.join(session_path, "ops.npy"), 
+                                                                                                     os.path.join(fov_path, "stat.npy"), 
+                                                                                                     plot=False)
+                    except:
+                        print('CN not found, skipping - bpod file missing??')
+                        continue
+
                     try:
                         clt = np.concatenate(np.asarray(_scanimage_filenames)[_closed_loop_trial])
                     except:
