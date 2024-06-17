@@ -160,7 +160,10 @@ def get_aligned_data(suite2p_path,
                      add_motion_energy = False,
                      face_rhythm_base_dir = None,
                      use_face_rhythm=False,
-                     match_with_face_rhythm = False):
+                     match_with_face_rhythm = False,
+                     only_up_to_reward = False,
+                     only_up_to_max_2p_frame_number = np.inf,
+                     add_part_distances = True): ### DO THIS!!!!
     """
     This script returns aligned F (raw flouroscence trace) and DLC data. 
     a. If there are multiple movie files a trial they are thrown out. 
@@ -199,7 +202,7 @@ def get_aligned_data(suite2p_path,
     F_aligned, DLC_aligned = get_aligned_data(suite2p_path, dlc_base_dir, bpod_path, 
                                     sessionwise_data_path, mouse, FOV, camera, session)
     """
-    only_up_to_reward = True
+    
     if use_face_rhythm or match_with_face_rhythm:
         with open(os.path.join(face_rhythm_base_dir,mouse,session,"run_info.json")) as f:
             face_rhythm_metadata = json.load(f)
@@ -328,6 +331,7 @@ def get_aligned_data(suite2p_path,
     dlc_data = None
     trials_taken = []
     trial_start_indices = []
+    csv_files_used = []
     for i, bm_name in tqdm(enumerate(behavior_movie_names)):
 
         if type(bm_name) == str:
@@ -352,14 +356,20 @@ def get_aligned_data(suite2p_path,
         trial_id = dlc_file_name[2][:-5]
 
         trial_json = os.path.join(dlc_folder, trial_id+".json")
-        with open(trial_json) as f:
-            trial_metadata = json.load(f) 
+        try:
+            with open(trial_json) as f:
+                trial_metadata = json.load(f) 
+        except:
+            print(f'could not open trial metadata file for trial {i}, skipping')
         F_trial = F_trialwise[i].T
         if only_up_to_reward:
             rew_trial = reward_trialwise[i].flatten()
             if any(rew_trial>0):
                # print('only used {} frames out of {} due to reward'.format(np.argmax(rew_trial),F_trial.shape[1]))
                 F_trial = F_trial[:,:np.argmax(rew_trial)]
+        if F_trial.shape[1]>only_up_to_max_2p_frame_number:
+            F_trial = F_trial[:,:only_up_to_max_2p_frame_number]
+            
                 
             
 
@@ -377,6 +387,26 @@ def get_aligned_data(suite2p_path,
 
 
         dlc_trial = pd.read_csv(os.path.join(dlc_folder, trial_csv), header=[1,2], index_col=0)
+        # remove low-confidence frames
+        bodyparts = []
+        for k_ in dlc_trial.keys():
+            bodyparts.append(k_[0])
+        bodyparts = np.unique(bodyparts)
+        for bodypart in bodyparts:
+            dlc_trial[(bodypart, 'x')][dlc_trial[(bodypart, 'likelihood')]<0.99] = np.nan
+            dlc_trial[(bodypart, 'y')][dlc_trial[(bodypart, 'likelihood')]<0.99] = np.nan
+        # add distances
+        
+        if add_part_distances:
+            for bodypart_i_0 in np.arange(len(bodyparts)):
+                bodypart_0 = bodyparts[bodypart_i_0]
+                for bodypart_i_1 in np.arange(bodypart_i_0+1,len(bodyparts)):
+                    bodypart_1 = bodyparts[bodypart_i_1]
+                    x_dist = dlc_trial[(bodypart_0,'x')] - dlc_trial[(bodypart_1,'x')]
+                    y_dist = dlc_trial[(bodypart_0,'y')] - dlc_trial[(bodypart_1,'y')]
+                    bodypart_distance = np.sqrt(x_dist**2 + y_dist**2)
+                    dlc_trial[('{}_to_{}'.format(bodypart_0,bodypart_1),'x')] = bodypart_distance
+        
         if add_motion_energy:
             motion_energy_folder = os.path.join(motion_energy_base_dir, camera, dlc_file_name[0], dlc_file_name[1])
             motion_energy_fname = os.path.join(motion_energy_folder, trial_id+".npy")
@@ -472,6 +502,7 @@ def get_aligned_data(suite2p_path,
         F_aligned.append(F_trial)
         #print(F_trial.shape)
         trials_taken.append(i)
+        csv_files_used.append(os.path.join(dlc_folder, trial_csv))
         try:
             lt.append(list((lick_times[i])*(dlc_trial.shape[0]/trial_times[i])))
             rt.append((reward_times[i])*(dlc_trial.shape[0]/trial_times[i]))
@@ -506,7 +537,7 @@ def get_aligned_data(suite2p_path,
             "trial_times_aligned": tt,
             "cn": cn,
             "trials_taken": trials_taken,
-            "trial_start_indices":trial_start_indices
-            } 
+            "trial_start_indices":trial_start_indices,
+            "csv_files_used":csv_files_used} 
     np.save(dict_save_path, dict_return)
     return dict_return

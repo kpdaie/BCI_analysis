@@ -186,9 +186,13 @@ def find_conditioned_neuron_idx(session_bpod_file,
         #%
 
         coordinates_now = coordinates_now[::-1] # go to yx
+        coordinates_now[coordinates_now>.99] = .99
+        coordinates_now[coordinates_now<.01] = .01
         coordinates_now[0] = coordinates_now[0]*Ly
         coordinates_now[1] = coordinates_now[1]*Lx
 
+        
+        
         yoff_now = yup[int(coordinates_now[0]),int(coordinates_now[1])]
         xoff_now = xup[int(coordinates_now[0]),int(coordinates_now[1])]
 
@@ -203,6 +207,7 @@ def find_conditioned_neuron_idx(session_bpod_file,
     for roi_idx_now in roi_indices:    
         if roi_idx_now is None:
             cond_s2p_idx.append(None)
+            distances_all.append(None)
             continue
         if type(roi_idx_now) == list: # multi-CN
             med_list = list()
