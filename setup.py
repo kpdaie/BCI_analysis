@@ -6,11 +6,11 @@ setup(
     install_requires=['suite2p',
                       'scipy',
                       'pandas',
-                      'mat73',
                       'scanimage_tiff_reader',
                       'pybpod-gui-api',#'pybpod',
                       'scikit-learn',
                       'matplotlib']
+                      #'mat73',# for loading old matlab files, 
                       #'umap-learn',# for axon imaging, temporary
                       #'rastermap'] # problems with numpy
     )
