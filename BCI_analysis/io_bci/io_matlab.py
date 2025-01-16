@@ -1,7 +1,10 @@
 import scipy.io as io
 import numpy as np
 import os
-import mat73
+try:
+    import mat73
+except:
+    print('could not import mat73')
 from datetime import datetime
 
 def read_multisession_mat(full_file_path):
